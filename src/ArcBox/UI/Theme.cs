@@ -232,7 +232,11 @@ namespace ArcBox.UI
                     break;
                 case ProgressBar _: break;
                 case Panel p:
-                    p.BackColor = role == "chrome" ? P.Chrome : role == "side" ? P.Side : role == "line" ? P.Border : role == "rule" ? P.Rule : role == "field" ? P.Field : P.Bg;
+                    // layout panels without a role take their parent's colour, so button rows on a footer bar
+                    // don't show up as a darker box
+                    Color inherit = p.Parent != null && p.Parent.BackColor.A == 255 ? p.Parent.BackColor : P.Bg;
+                    p.BackColor = role == "chrome" ? P.Chrome : role == "side" ? P.Side : role == "line" ? P.Border : role == "rule" ? P.Rule : role == "field" ? P.Field
+                        : (p is FlowLayoutPanel || p is TableLayoutPanel) ? inherit : P.Bg;
                     p.ForeColor = P.Text;
                     break;
                 case GroupBox g: g.ForeColor = P.Text; g.BackColor = P.Bg; break;
