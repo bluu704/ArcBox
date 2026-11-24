@@ -102,23 +102,12 @@ namespace ArcBox.UI
                 }
             }
 
-            [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
             [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
 
             protected override void OnHandleCreated(EventArgs e)
             {
                 base.OnHandleCreated(e);
-                try
-                {
-                    int round = 2; // DWMWCP_ROUND (Windows 11)
-                    if (DwmSetWindowAttribute(Handle, 33, ref round, 4) == 0)
-                    {
-                        var c = Theme.P.Input;
-                        int bgr = c.R | (c.G << 8) | (c.B << 16);
-                        _dwmBorder = DwmSetWindowAttribute(Handle, 34, ref bgr, 4) == 0; // DWMWA_BORDER_COLOR
-                    }
-                }
-                catch { }
+                _dwmBorder = Theme.RoundPopup(Handle);
             }
 
             private readonly Timer _outside = new Timer { Interval = 80 };

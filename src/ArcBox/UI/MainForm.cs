@@ -284,9 +284,19 @@ namespace ArcBox.UI
         private static void SetCue(TextBox tb, string cue) => tb.HandleCreated += (s, e) => SendMessage(tb.Handle, 0x1501, (IntPtr)1, cue);
 
         // ------------------------------------------------------------ menu / toolbar
-        private ToolStripMenuItem Mi(ToolStripMenuItem parent, string text, Action click, Keys keys = Keys.None, int needs = 0)
+        private readonly List<KeyValuePair<ToolStripItem, string>> _glyphItems = new List<KeyValuePair<ToolStripItem, string>>();
+
+        private void SetGlyph(ToolStripItem it, string glyph)
+        {
+            if (glyph == null) return;
+            _glyphItems.Add(new KeyValuePair<ToolStripItem, string>(it, glyph));
+            it.Image = Glyphs.Get(glyph, Theme.S(16), Theme.P.Icon, "•");
+        }
+
+        private ToolStripMenuItem Mi(ToolStripMenuItem parent, string text, Action click, Keys keys = Keys.None, int needs = 0, string glyph = null)
         {
             var m = new ToolStripMenuItem(text) { ShortcutKeys = keys };
+            SetGlyph(m, glyph);
             if (keys == Keys.Delete) m.ShortcutKeyDisplayString = "Del";
             if (keys == Keys.F2) m.ShortcutKeyDisplayString = "F2";
             if (click != null) m.Click += (o, e) => click();
@@ -299,33 +309,33 @@ namespace ArcBox.UI
         private void BuildMenu()
         {
             var file = new ToolStripMenuItem("파일(&F)");
-            Mi(file, "열기…", OpenDialog, Keys.Control | Keys.O);
-            Mi(file, "새로 압축하기 (파일 선택)…", NewArchiveFromFiles, Keys.Control | Keys.N);
+            Mi(file, "열기…", OpenDialog, Keys.Control | Keys.O, 0, Glyphs.Open);
+            Mi(file, "새로 압축하기 (파일 선택)…", NewArchiveFromFiles, Keys.Control | Keys.N, 0, Glyphs.NewArchive);
             Mi(file, "새로 압축하기 (폴더 선택)…", NewArchiveFromFolder);
             _miRecent = Mi(file, "최근 파일", null);
             file.DropDownOpening += (o, e) => FillRecentMenu();
             file.DropDownItems.Add(new ToolStripSeparator());
-            Mi(file, "압축 파일 정보", ShowInfo, Keys.Control | Keys.I, 1);
+            Mi(file, "압축 파일 정보", ShowInfo, Keys.Control | Keys.I, 1, Glyphs.Info);
             Mi(file, "닫기", () => { CloseArchive(); ShowEmpty(); }, Keys.Control | Keys.W, 1);
             file.DropDownItems.Add(new ToolStripSeparator());
             Mi(file, "끝내기", Close);
 
             var edit = new ToolStripMenuItem("편집(&E)");
-            Mi(edit, "파일 추가…", AddFilesDialog, Keys.None, 2);
+            Mi(edit, "파일 추가…", AddFilesDialog, Keys.None, 2, Glyphs.Add);
             Mi(edit, "폴더 추가…", AddFolderDialog, Keys.None, 2);
-            Mi(edit, "새 폴더…", NewFolder, Keys.None, 2);
+            Mi(edit, "새 폴더…", NewFolder, Keys.None, 2, Glyphs.NewFolder);
             edit.DropDownItems.Add(new ToolStripSeparator());
-            Mi(edit, "이름 바꾸기", Rename, Keys.F2, 2);
-            Mi(edit, "삭제", DeleteSelected, Keys.Delete, 2);
+            Mi(edit, "이름 바꾸기", Rename, Keys.F2, 2, Glyphs.Rename);
+            Mi(edit, "삭제", DeleteSelected, Keys.Delete, 2, Glyphs.Delete);
             edit.DropDownItems.Add(new ToolStripSeparator());
             Mi(edit, "모두 선택", SelectAll, Keys.Control | Keys.A, 1);
 
             var act = new ToolStripMenuItem("작업(&A)");
-            Mi(act, "압축 풀기…", ExtractDialog, Keys.Control | Keys.E, 1);
+            Mi(act, "압축 풀기…", ExtractDialog, Keys.Control | Keys.E, 1, Glyphs.Extract);
             Mi(act, "여기에 풀기 (스마트)", () => ExtractQuick(ExtractTarget.Smart), Keys.None, 1);
-            Mi(act, "폴더로 풀기", () => ExtractQuick(ExtractTarget.Folder), Keys.None, 1);
+            Mi(act, "폴더로 풀기", () => ExtractQuick(ExtractTarget.Folder), Keys.None, 1, Glyphs.NewFolder);
             act.DropDownItems.Add(new ToolStripSeparator());
-            Mi(act, "압축 파일 테스트", TestArchive, Keys.Control | Keys.T, 1);
+            Mi(act, "압축 파일 테스트", TestArchive, Keys.Control | Keys.T, 1, Glyphs.Test);
             act.DropDownItems.Add(new ToolStripSeparator());
             Mi(act, "이미지 미리보기 (Space)", PreviewSelected, Keys.None, 1);
             Mi(act, "다른 프로그램으로 열기", OpenExternally, Keys.None, 1);
@@ -337,7 +347,7 @@ namespace ArcBox.UI
             view.DropDownItems.Add(_miPreview);
             view.DropDownItems.Add(new ToolStripSeparator());
             view.DropDownOpening += (o, e) => SyncViewChecks();
-            Mi(view, "새로 고침", () => Reopen(), Keys.F5, 1);
+            Mi(view, "새로 고침", () => Reopen(), Keys.F5, 1, Glyphs.Refresh);
             _miEncoding = Mi(view, "파일 이름 인코딩", null, Keys.None, 1);
             foreach (var kv in new[] { (0, "자동 (시스템 기본)"), (65001, "유니코드 (UTF-8)"), (949, "한국어 (CP949)"), (932, "일본어 (Shift-JIS)"), (936, "중국어 간체 (GBK)"), (950, "중국어 번체 (Big5)"), (1252, "서유럽 (Windows-1252)"), (866, "키릴 (CP866)") })
             {
@@ -358,12 +368,12 @@ namespace ArcBox.UI
             _miTheme.DropDownOpening += (o, e) => { foreach (ToolStripMenuItem m in _miTheme.DropDownItems) m.Checked = (string)m.Tag == AppSettings.Current.Theme; };
 
             var tools = new ToolStripMenuItem("도구(&T)");
-            Mi(tools, "설정…", () => ShowSettings("일반"));
+            Mi(tools, "설정…", () => ShowSettings("일반"), Keys.None, 0, Glyphs.Settings);
             Mi(tools, "파일 연결…", () => ShowSettings("파일 연결"));
             Mi(tools, "Windows 기본 앱 설정 열기", () => { try { Kit.ShellOpen("ms-settings:defaultapps?registeredAppUser=ArcBox"); } catch { } });
 
             var help = new ToolStripMenuItem("도움말(&H)");
-            Mi(help, "ArcBox 정보", About);
+            Mi(help, "ArcBox 정보", About, Keys.None, 0, Glyphs.Info);
 
             _menu.Items.AddRange(new ToolStripItem[] { file, edit, act, view, tools, help });
         }
@@ -430,6 +440,7 @@ namespace ArcBox.UI
                 nb.FlatAppearance.MouseOverBackColor = p.Hover;
             }
             _preview.ApplyTheme();
+            foreach (var kv in _glyphItems) kv.Key.Image = Glyphs.Get(kv.Value, Theme.S(16), p.Icon, "•");
             _split2.BackColor = p.Border;
             _split2.Panel1.BackColor = _split2.Panel2.BackColor = p.Bg;
             _search.BackColor = p.Field; _search.ForeColor = p.Text;
@@ -893,24 +904,31 @@ namespace ArcBox.UI
             if (_reader == null) return;
             var sel = SelectedRows();
             var m = new ContextMenuStrip { Renderer = new Theme.FlatRenderer(), Font = Theme.UiFont };
-            void Add(string text, Action a, bool enabled = true) { var i = new ToolStripMenuItem(text) { Enabled = enabled }; i.Click += (o, e) => a(); m.Items.Add(i); }
+            void Add(string text, Action a, bool enabled = true, string glyph = null)
+            {
+                var i = new ToolStripMenuItem(text) { Enabled = enabled };
+                if (glyph != null) i.Image = Glyphs.Get(glyph, Theme.S(16), Theme.P.Icon, "•");
+                i.Click += (o, e) => a();
+                m.Items.Add(i);
+            }
             bool canMod = _reader.CanModify;
             if (sel.Count > 0)
             {
                 bool img = sel.Count == 1 && !sel[0].IsDir && (ImageDecode.IsImage(sel[0].Name) || TextUtil.IsText(sel[0].Name));
-                Add(img ? "미리보기" : "열기", OpenSelected, sel.Count == 1);
+                Add(img ? "미리보기" : "열기", OpenSelected, sel.Count == 1, Glyphs.Open);
                 if (sel.Count == 1 && !sel[0].IsDir) Add("다른 프로그램으로 열기", OpenExternally);
-                Add("선택 항목 풀기…", ExtractDialog);
+                Add("선택 항목 풀기…", ExtractDialog, true, Glyphs.Extract);
                 m.Items.Add(new ToolStripSeparator());
-                Add("이름 바꾸기", Rename, canMod && sel.Count == 1);
-                Add("삭제", DeleteSelected, canMod);
+                Add("이름 바꾸기", Rename, canMod && sel.Count == 1, Glyphs.Rename);
+                Add("삭제", DeleteSelected, canMod, Glyphs.Delete);
             }
             else
             {
-                Add("파일 추가…", AddFilesDialog, canMod);
-                Add("새 폴더…", NewFolder, canMod);
-                Add("모두 풀기…", ExtractDialog);
+                Add("파일 추가…", AddFilesDialog, canMod, Glyphs.Add);
+                Add("새 폴더…", NewFolder, canMod, Glyphs.NewFolder);
+                Add("모두 풀기…", ExtractDialog, true, Glyphs.Extract);
             }
+            m.Closed += (o, e) => BeginInvoke((Action)m.Dispose);
             m.Show(_list, at);
         }
 

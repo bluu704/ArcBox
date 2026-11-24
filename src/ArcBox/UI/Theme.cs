@@ -109,6 +109,81 @@ namespace ArcBox.UI
             catch { }
         }
 
+        private static bool? _win11;
+        public static bool IsWin11
+        {
+            get
+            {
+                if (_win11 == null)
+                {
+                    try
+                    {
+                        using (var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                            _win11 = int.TryParse(k?.GetValue("CurrentBuildNumber") as string, out int b) && b >= 22000;
+                    }
+                    catch { _win11 = false; }
+                }
+                return _win11.Value;
+            }
+        }
+
+        /// <summary>Rounded corners and a themed border on Windows 11 popups (menus, the double-click menu).</summary>
+        public static bool RoundPopup(IntPtr hwnd)
+        {
+            if (!IsWin11 || hwnd == IntPtr.Zero) return false;
+            try
+            {
+                int round = 2; // DWMWCP_ROUND
+                if (DwmSetWindowAttribute(hwnd, 33, ref round, 4) != 0) return false;
+                var c = P.Input;
+                int bgr = c.R | (c.G << 8) | (c.B << 16);
+                DwmSetWindowAttribute(hwnd, 34, ref bgr, 4); // DWMWA_BORDER_COLOR
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static readonly HashSet<ToolStrip> StyledMenus = new HashSet<ToolStrip>();
+
+        /// <summary>Gives every drop-down under ts (menu bar, toolbar buttons, context menus) the look of the double-click menu:
+        /// roomier rows, rounded highlight, rounded window on Windows 11.</summary>
+        public static void StyleMenus(ToolStrip ts)
+        {
+            if (ts == null || !StyledMenus.Add(ts)) return;
+            ts.Disposed += (o, e) => StyledMenus.Remove(ts);
+            if (ts is ToolStripDropDown dd)
+            {
+                dd.Padding = new Padding(S(4), S(5), S(4), S(5));
+                dd.Opening += (o, e) => PadItems(dd);
+                dd.Opened += (o, e) => RoundPopup(dd.Handle);
+                if (dd is ToolStripDropDownMenu dm) dm.ImageScalingSize = new Size(S(16), S(16));
+            }
+            foreach (ToolStripItem it in ts.Items)
+                if (it is ToolStripDropDownItem di) Hook(di);
+        }
+
+        private static readonly HashSet<ToolStripItem> Hooked = new HashSet<ToolStripItem>();
+
+        private static void Hook(ToolStripDropDownItem di)
+        {
+            if (!Hooked.Add(di)) return;
+            di.Disposed += (o, e) => Hooked.Remove(di);
+            di.DropDownOpening += (o, e) => { if (!(di.DropDown.Renderer is FlatRenderer)) di.DropDown.Renderer = new FlatRenderer(); StyleMenus(di.DropDown); };
+        }
+
+        private static void PadItems(ToolStripDropDown dd)
+        {
+            foreach (ToolStripItem it in dd.Items)
+            {
+                if (it is ToolStripMenuItem mi)
+                {
+                    mi.Padding = new Padding(0, S(4), 0, S(4));
+                    if (mi.HasDropDownItems) Hook(mi);
+                }
+                else if (it is ToolStripSeparator sep) { sep.AutoSize = false; sep.Height = S(9); }
+            }
+        }
+
         public static void Explorer(Control c)
         {
             try { SetWindowTheme(c.Handle, P.Dark ? "DarkMode_Explorer" : "Explorer", null); } catch { }
@@ -197,9 +272,15 @@ namespace ArcBox.UI
         {
             public FlatRenderer() : base(new Colors()) { RoundedEdges = false; }
 
+            protected override void Initialize(ToolStrip toolStrip)
+            {
+                base.Initialize(toolStrip);
+                StyleMenus(toolStrip);
+            }
+
             protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
             {
-                if (e.ToolStrip is ToolStripDropDown)
+                if (e.ToolStrip is ToolStripDropDown && !IsWin11)
                 {
                     using (var p = new Pen(P.Input)) e.Graphics.DrawRectangle(p, 0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1);
                 }
@@ -232,8 +313,11 @@ namespace ArcBox.UI
             {
                 if (!e.Item.Selected && !e.Item.Pressed) return;
                 if (!e.Item.Enabled) return;
-                var r = new Rectangle(2, 0, e.Item.Width - 4, e.Item.Height);
-                using (var b = new SolidBrush(P.Hover)) e.Graphics.FillRectangle(b, r);
+                bool top = e.Item.Owner is MenuStrip;
+                var r = top ? new Rectangle(1, S(2), e.Item.Width - 2, e.Item.Height - S(4)) : new Rectangle(S(2), 1, e.Item.Width - S(4), e.Item.Height - 2);
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var path = Round(r, S(5)))
+                using (var b = new SolidBrush(P.Hover)) e.Graphics.FillPath(b, path);
             }
 
             protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
