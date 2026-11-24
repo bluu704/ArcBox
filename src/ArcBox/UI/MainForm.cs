@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using ArcBox.Core;
 
@@ -69,6 +70,18 @@ namespace ArcBox.UI
         private readonly Timer _searchTimer = new Timer { Interval = 220 };
         private readonly ImageList _treeImages = new ImageList { ColorDepth = ColorDepth.Depth32Bit };
 
+        // icon views (중간 / 큰 / 아주 큰 아이콘) with thumbnails of pictures
+        private string _viewMode = "details";
+        private ImageList _bigImages;
+        private readonly Dictionary<string, int> _imgIndex = new Dictionary<string, int>();
+        private readonly HashSet<int> _thumbQueued = new HashSet<int>();
+        private readonly Stack<ArchiveEntry> _thumbStack = new Stack<ArchiveEntry>();
+        private int _thumbGen;
+        private bool _thumbRunning;
+        private ToolStripDropDownButton _tbView;
+        private readonly List<ToolStripMenuItem> _viewItems = new List<ToolStripMenuItem>();
+        private static readonly string[] ViewModes = { "xlarge", "large", "medium", "details" };
+
         private ToolStripButton _tbOpen, _tbNew, _tbExtract, _tbAdd, _tbDelete, _tbTest, _tbInfo, _tbSettings;
         private ToolStripMenuItem _miRecent, _miEncoding, _miTheme;
         private readonly List<ToolStripItem> _needArchive = new List<ToolStripItem>();
@@ -125,8 +138,9 @@ namespace ArcBox.UI
 
             // tree + list
             _split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel1, SplitterWidth = Theme.S(4) };
-            _tree = new TreeView
+            _tree = new NoHScrollTree
             {
+                ShowNodeToolTips = true,
                 Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, HideSelection = false, ShowLines = false, FullRowSelect = true,
                 ItemHeight = Theme.S(24), ImageList = _treeImages, Font = Theme.UiFont, Indent = Theme.S(14)
             };
@@ -139,11 +153,15 @@ namespace ArcBox.UI
                 bool sel = e.Node == _tree.SelectedNode;
                 var r = new Rectangle(e.Bounds.X, e.Bounds.Y, Math.Max(e.Bounds.Width, _tree.ClientSize.Width - e.Bounds.X), e.Bounds.Height);
                 using (var b = new SolidBrush(sel ? p.Hover : p.Side)) e.Graphics.FillRectangle(b, r);
-                TextRenderer.DrawText(e.Graphics, e.Node.Text, Theme.UiFont, new Rectangle(e.Bounds.X + Theme.S(2), e.Bounds.Y, r.Width - Theme.S(4), r.Height),
+                // never wider than the visible pane, so long names end in "…" instead of being cut
+                int tw = Math.Max(Theme.S(10), _tree.ClientSize.Width - e.Bounds.X - Theme.S(6));
+                TextRenderer.DrawText(e.Graphics, e.Node.Text, Theme.UiFont, new Rectangle(e.Bounds.X + Theme.S(2), e.Bounds.Y, tw, r.Height),
                     p.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             };
             _tree.AfterSelect += (o, e) => { if (!_suppressTree && e.Node?.Tag is Node n) ShowFolder(n, false); };
             _split.Panel1.Controls.Add(_tree);
+            _split.SplitterMoved += (o, e) => _tree.Invalidate();
+            _tree.Resize += (o, e) => _tree.Invalidate();
             _split.Panel1.Padding = new Padding(Theme.S(4), Theme.S(6), 0, 0);
 
             _list = new ListView
@@ -156,7 +174,19 @@ namespace ArcBox.UI
             _list.Columns.Add("크기", Theme.S(80), HorizontalAlignment.Right);
             _list.Columns.Add("압축 크기", Theme.S(80), HorizontalAlignment.Right);
             _list.Columns.Add("수정한 날짜", Theme.S(130));
-            _list.RetrieveVirtualItem += (o, e) => e.Item = new ListViewItem(new[] { "", "", "", "" });
+            _list.RetrieveVirtualItem += (o, e) =>
+            {
+                if (_list.View == View.Details || e.ItemIndex < 0 || e.ItemIndex >= _rows.Count) { e.Item = new ListViewItem(new[] { "", "", "", "" }); return; }
+                var row = _rows[e.ItemIndex];
+                e.Item = new ListViewItem(row.Name) { ImageIndex = BigImageFor(row) };
+            };
+            _list.MouseWheel += (o, e) =>
+            {
+                if ((ModifierKeys & Keys.Control) == 0) return;
+                if (e is HandledMouseEventArgs h) h.Handled = true;
+                int i = Array.IndexOf(ViewModes, _viewMode) + (e.Delta > 0 ? -1 : 1);
+                if (i >= 0 && i < ViewModes.Length) SetViewMode(ViewModes[i]);
+            };
             _list.DrawColumnHeader += DrawHeader;
             _list.DrawItem += (o, e) => { };
             _list.DrawSubItem += DrawCell;
@@ -167,6 +197,7 @@ namespace ArcBox.UI
             _list.ItemDrag += (o, e) => DragOut();
             _list.Resize += (o, e) => FitColumns();
             _list.MouseUp += (o, e) => { if (e.Button == MouseButtons.Right) ShowListMenu(e.Location); };
+            _list.HandleCreated += (o, e) => ApplyIconSpacing();
             _split.Panel2.Controls.Add(_list);
 
             // status
@@ -218,6 +249,7 @@ namespace ArcBox.UI
                 _split.Panel1MinSize = Theme.S(120);
                 _split.SplitterDistance = Theme.S(Math.Max(120, s.TreeWidth));
                 ApplyTheme();
+                SetViewMode(s.ViewMode);
                 ShowEmpty();
                 if (!string.IsNullOrEmpty(openPath)) BeginInvoke((Action)(() => OpenArchive(openPath)));
             };
@@ -274,6 +306,9 @@ namespace ArcBox.UI
             Mi(act, "다른 프로그램으로 열기", OpenExternally, Keys.None, 1);
 
             var view = new ToolStripMenuItem("보기(&V)");
+            foreach (var mi in ViewMenuItems()) view.DropDownItems.Add(mi);
+            view.DropDownItems.Add(new ToolStripSeparator());
+            view.DropDownOpening += (o, e) => SyncViewChecks();
             Mi(view, "새로 고침", () => Reopen(), Keys.F5, 1);
             _miEncoding = Mi(view, "파일 이름 인코딩", null, Keys.None, 1);
             foreach (var kv in new[] { (0, "자동 (시스템 기본)"), (65001, "유니코드 (UTF-8)"), (949, "한국어 (CP949)"), (932, "일본어 (Shift-JIS)"), (936, "중국어 간체 (GBK)"), (950, "중국어 번체 (Big5)"), (1252, "서유럽 (Windows-1252)"), (866, "키릴 (CP866)") })
@@ -328,6 +363,16 @@ namespace ArcBox.UI
             _tbDelete = Tb("삭제", Glyphs.Delete, DeleteSelected, 2, "삭제 (Del)");
             _tbTest = Tb("테스트", Glyphs.Test, TestArchive, 1, "압축 파일 테스트 (Ctrl+T)");
             _tbInfo = Tb("정보", Glyphs.Info, ShowInfo, 1, "압축 파일 정보 (Ctrl+I)");
+            _tbView = new ToolStripDropDownButton("보기")
+            {
+                TextImageRelation = TextImageRelation.ImageAboveText, ImageScaling = ToolStripItemImageScaling.None, ShowDropDownArrow = false,
+                AutoSize = false, Size = new Size(Theme.S(58), Theme.S(54)), Tag = Glyphs.View, ToolTipText = "보기 방식 (Ctrl+마우스 휠)", Margin = new Padding(0, 0, Theme.S(2), 0)
+            };
+            _tbView.DropDown.Renderer = new Theme.FlatRenderer();
+            foreach (var mi in ViewMenuItems(false)) _tbView.DropDownItems.Add(mi);
+            _tbView.DropDownOpening += (o, e) => SyncViewChecks();
+            _tools.Items.Add(_tbView);
+            _needArchive.Add(_tbView);
             _tools.Items.Add(new ToolStripSeparator { AutoSize = false, Size = new Size(Theme.S(12), Theme.S(54)) });
             _tbSettings = Tb("설정", Glyphs.Settings, () => ShowSettings("일반"));
         }
@@ -338,10 +383,10 @@ namespace ArcBox.UI
             Theme.Apply(this);
             foreach (ToolStripItem it in _tools.Items)
             {
-                if (it is ToolStripButton b && b.Tag is string g)
+                if ((it is ToolStripButton || it is ToolStripDropDownButton) && it.Tag is string g)
                 {
-                    bool accent = b == _tbNew || b == _tbExtract;
-                    b.Image = Glyphs.Get(g, Theme.S(22), accent ? p.Accent : p.Icon, b.Text.Substring(0, 1));
+                    bool accent = it == _tbNew || it == _tbExtract;
+                    it.Image = Glyphs.Get(g, Theme.S(22), accent ? p.Accent : p.Icon, it.Text.Substring(0, 1));
                 }
             }
             _upBtn.Image = Glyphs.Get(Glyphs.Up, Theme.S(14), p.Text, "↑");
@@ -486,6 +531,7 @@ namespace ArcBox.UI
             _root = _current = null;
             _rows = new List<Row>();
             _list.VirtualListSize = 0;
+            ResetThumbs();
             _tree.Nodes.Clear();
             Text = "ArcBox";
         }
@@ -563,12 +609,33 @@ namespace ArcBox.UI
 
             _tree.BeginUpdate();
             _tree.Nodes.Clear();
-            var rootTn = new TreeNode(_root.Name) { Tag = _root, ImageKey = "arc", SelectedImageKey = "arc" };
+            var rootTn = new TreeNode(_root.Name) { Tag = _root, ImageKey = "arc", SelectedImageKey = "arc", ToolTipText = _root.Name };
             _root.TreeNode = rootTn;
             AddTreeChildren(_root, rootTn);
             _tree.Nodes.Add(rootTn);
             rootTn.Expand();
             _tree.EndUpdate();
+            FitTreeWidth();
+        }
+
+        /// <summary>Widens the folder pane (up to 40% of the window) so the archive name and the first-level folders fit.</summary>
+        private void FitTreeWidth()
+        {
+            if (_root?.TreeNode == null) return;
+            int need = 0;
+            void Measure(TreeNode tn, int level)
+            {
+                int w = Theme.S(4) + _tree.Indent * (level + 1) + Theme.S(20) + TextRenderer.MeasureText(tn.Text, Theme.UiFont).Width + Theme.S(16);
+                need = Math.Max(need, w);
+            }
+            Measure(_root.TreeNode, 0);
+            foreach (TreeNode c in _root.TreeNode.Nodes) Measure(c, 1);
+            int max = (int)(_split.Width * 0.4);
+            int want = Math.Min(need, max);
+            if (want > _split.SplitterDistance)
+            {
+                try { _split.SplitterDistance = want; } catch { }
+            }
         }
 
         private static ulong ComputeSizes(Node n)
@@ -584,7 +651,7 @@ namespace ArcBox.UI
         {
             foreach (var d in n.Dirs.Values)
             {
-                var c = new TreeNode(d.Name) { Tag = d, ImageKey = "dir", SelectedImageKey = "dir" };
+                var c = new TreeNode(d.Name) { Tag = d, ImageKey = "dir", SelectedImageKey = "dir", ToolTipText = d.Name };
                 d.TreeNode = c;
                 AddTreeChildren(d, c);
                 tn.Nodes.Add(c);
@@ -604,6 +671,7 @@ namespace ArcBox.UI
         private void ShowFolder(Node n, bool syncTree)
         {
             _current = n;
+            lock (_thumbStack) { _thumbStack.Clear(); _thumbQueued.Clear(); }
             if (_search.Text.Length > 0) _search.Text = "";
             if (syncTree && n.TreeNode != null)
             {
@@ -1115,6 +1183,205 @@ namespace ArcBox.UI
                 DoDragDrop(data, DragDropEffects.Copy);
             }
             finally { _draggingOut = false; }
+        }
+
+        // ------------------------------------------------------------ view modes / thumbnails
+        private IEnumerable<ToolStripMenuItem> ViewMenuItems(bool shortcuts = true)
+        {
+            var defs = new[]
+            {
+                ("xlarge", "아주 큰 아이콘", Keys.Control | Keys.Shift | Keys.D1),
+                ("large", "큰 아이콘", Keys.Control | Keys.Shift | Keys.D2),
+                ("medium", "중간 아이콘", Keys.Control | Keys.Shift | Keys.D3),
+                ("details", "자세히", Keys.Control | Keys.Shift | Keys.D6),
+            };
+            foreach (var d in defs)
+            {
+                var mode = d.Item1;
+                var mi = new ToolStripMenuItem(d.Item2) { Tag = mode };
+                if (shortcuts) mi.ShortcutKeys = d.Item3;
+                else mi.ShortcutKeyDisplayString = "Ctrl+Shift+" + (d.Item3 & Keys.KeyCode).ToString().Substring(1);
+                mi.Click += (o, e) => SetViewMode(mode);
+                _viewItems.Add(mi);
+                yield return mi;
+            }
+        }
+
+        private void SyncViewChecks()
+        {
+            foreach (var mi in _viewItems) mi.Checked = (string)mi.Tag == _viewMode;
+        }
+
+        private int ThumbSize => Theme.S(_viewMode == "xlarge" ? 192 : _viewMode == "large" ? 96 : 48);
+
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
+        private void SetViewMode(string mode)
+        {
+            if (Array.IndexOf(ViewModes, mode) < 0) mode = "details";
+            _viewMode = mode;
+            ResetThumbs();
+            if (mode == "details")
+            {
+                _list.View = View.Details;
+                _list.OwnerDraw = true;
+            }
+            else
+            {
+                int sz = ThumbSize;
+                var old = _bigImages;
+                _bigImages = new ImageList { ColorDepth = ColorDepth.Depth32Bit, ImageSize = new Size(sz, sz) };
+                _list.LargeImageList = _bigImages;
+                old?.Dispose();
+                _list.OwnerDraw = false;
+                _list.View = View.LargeIcon;
+                ApplyIconSpacing();
+            }
+            _list.Invalidate();
+            if (AppSettings.Current.ViewMode != mode) { AppSettings.Current.ViewMode = mode; AppSettings.Current.Save(); }
+        }
+
+        private void ApplyIconSpacing()
+        {
+            if (_viewMode == "details" || !_list.IsHandleCreated) return;
+            int sz = ThumbSize;
+            int cx = sz + Theme.S(_viewMode == "medium" ? 40 : 24), cy = sz + Theme.S(46);
+            SendMessage(_list.Handle, 0x1000 + 53, IntPtr.Zero, (IntPtr)((cy << 16) | (cx & 0xFFFF))); // LVM_SETICONSPACING
+            _list.Invalidate();
+        }
+
+        private void ResetThumbs()
+        {
+            lock (_thumbStack) { _thumbGen++; _thumbStack.Clear(); _thumbQueued.Clear(); }
+            _imgIndex.Clear();
+            _bigImages?.Images.Clear();
+        }
+
+        private int AddBigImage(string key, Bitmap b)
+        {
+            _bigImages.Images.Add(b);
+            return _imgIndex[key] = _bigImages.Images.Count - 1;
+        }
+
+        private int TypeImage(Row row)
+        {
+            string key = row.IsDir ? "<dir>" : "x" + Path.GetExtension(row.Name).ToLowerInvariant();
+            return _imgIndex.TryGetValue(key, out int i) ? i : AddBigImage(key, ShellIcons.LargeIcon(row.Name, row.IsDir, ThumbSize));
+        }
+
+        private bool CanThumb(Row row) =>
+            !row.IsDir && row.Entry != null && ImageDecode.IsImage(row.Name) && row.Entry.Size <= 80UL * 1024 * 1024 &&
+            (!row.Entry.Encrypted || _reader?.Password != null);
+
+        private int BigImageFor(Row row)
+        {
+            if (_bigImages == null) return -1;
+            if (CanThumb(row))
+            {
+                if (_imgIndex.TryGetValue("t" + row.Entry.Index, out int ti)) return ti;
+                QueueThumb(row.Entry);
+            }
+            return TypeImage(row);
+        }
+
+        private void QueueThumb(ArchiveEntry e)
+        {
+            if (_reader == null) return;
+            lock (_thumbStack)
+            {
+                if (!_thumbQueued.Add(e.Index)) return;
+                _thumbStack.Push(e); // newest request first: what is on screen now
+                if (_thumbRunning) return;
+                _thumbRunning = true;
+            }
+            var reader = _reader;
+            int gen = _thumbGen, sz = ThumbSize;
+            Task.Run(() => ThumbLoop(reader, gen, sz));
+        }
+
+        private void ThumbLoop(ArchiveReader reader, int gen, int sz)
+        {
+            while (true)
+            {
+                var batch = new List<ArchiveEntry>();
+                lock (_thumbStack)
+                {
+                    if (gen != _thumbGen || _thumbStack.Count == 0) { _thumbRunning = false; return; }
+                    while (batch.Count < 8 && _thumbStack.Count > 0) batch.Add(_thumbStack.Pop());
+                }
+                Dictionary<int, byte[]> data;
+                try { data = reader.ReadEntriesBytes(batch.OrderBy(x => x.Index).ToList(), new SilentUI()); }
+                catch (Exception ex) { Log.Write("thumb: " + ex.Message); data = new Dictionary<int, byte[]>(); }
+                var done = new List<KeyValuePair<ArchiveEntry, Bitmap>>();
+                foreach (var e in batch)
+                {
+                    Bitmap thumb = null;
+                    if (data.TryGetValue(e.Index, out var bytes))
+                    {
+                        try { using (var img = ImageDecode.Decode(bytes, e.Name)) thumb = MakeThumb(img, sz); }
+                        catch { }
+                    }
+                    done.Add(new KeyValuePair<ArchiveEntry, Bitmap>(e, thumb));
+                }
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        bool current;
+                        lock (_thumbStack) current = gen == _thumbGen;
+                        if (!current || _bigImages == null) { foreach (var kv in done) kv.Value?.Dispose(); return; }
+                        if (_bigImages.Images.Count > 1500) { ResetThumbs(); _list.Invalidate(); return; }
+                        foreach (var kv in done)
+                        {
+                            string key = "t" + kv.Key.Index;
+                            if (kv.Value != null) { AddBigImage(key, kv.Value); kv.Value.Dispose(); }
+                            else _imgIndex[key] = TypeImage(new Row { Name = kv.Key.Name, Entry = kv.Key });
+                        }
+                        _list.Invalidate();
+                    }));
+                }
+                catch { lock (_thumbStack) _thumbRunning = false; return; } // window closed
+            }
+        }
+
+        private static Bitmap MakeThumb(Image img, int sz)
+        {
+            var b = new Bitmap(sz, sz);
+            using (var g = Graphics.FromImage(b))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                int pad = Math.Max(2, sz / 32);
+                float scale = Math.Min((float)(sz - pad * 2) / img.Width, (float)(sz - pad * 2) / img.Height);
+                scale = Math.Min(scale, 1f * Math.Max(1, sz / 48)); // tiny images are not blown up too much
+                int w = Math.Max(1, (int)(img.Width * scale)), h = Math.Max(1, (int)(img.Height * scale));
+                var r = new Rectangle((sz - w) / 2, (sz - h) / 2, w, h);
+                g.DrawImage(img, r);
+                using (var pen = new Pen(Color.FromArgb(60, 128, 128, 128))) g.DrawRectangle(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
+            }
+            return b;
+        }
+
+        private sealed class SilentUI : IOperationUI
+        {
+            public bool IsCancelled => false;
+            public void WaitIfPaused() { }
+            public void SetStage(string text) { }
+            public void SetTotal(ulong total) { }
+            public void SetCompleted(ulong done) { }
+            public void SetCurrentFile(string name) { }
+            public string AskPassword(string archiveName, bool retry) => null;
+            public OverwriteAction AskOverwrite(string targetPath, ArchiveEntry entry) => OverwriteAction.Overwrite;
+        }
+
+        /// <summary>TreeView without a horizontal scrollbar: long names are shortened with "…" instead of scrolling the pane sideways.</summary>
+        private sealed class NoHScrollTree : TreeView
+        {
+            protected override CreateParams CreateParams
+            {
+                get { var cp = base.CreateParams; cp.Style |= 0x8000; return cp; } // TVS_NOHSCROLL
+            }
         }
 
         // ------------------------------------------------------------ misc

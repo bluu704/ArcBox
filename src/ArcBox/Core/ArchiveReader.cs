@@ -345,6 +345,29 @@ namespace ArcBox.Core
             }
         }
 
+        /// <summary>Reads several entries in one extraction pass (thumbnails). Entries that fail are left out.</summary>
+        public Dictionary<int, byte[]> ReadEntriesBytes(IList<ArchiveEntry> entries, IOperationUI ui)
+        {
+            var result = new Dictionary<int, byte[]>();
+            string dir = Path.Combine(Path.GetTempPath(), "ArcBox", "th-" + Guid.NewGuid().ToString("N").Substring(0, 10));
+            try
+            {
+                Directory.CreateDirectory(dir);
+                var plan = new Dictionary<int, string>();
+                foreach (var e in entries) plan[e.Index] = Path.Combine(dir, e.Index.ToString());
+                Extract(plan, OverwriteMode.Overwrite, ui, new OpResult());
+                foreach (var kv in plan)
+                {
+                    try { if (File.Exists(kv.Value)) result[kv.Key] = File.ReadAllBytes(kv.Value); } catch { }
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(dir, true); } catch { }
+            }
+            return result;
+        }
+
         /// <summary>Extracts one entry into a stream (used for previews / temp open).</summary>
         public Dictionary<int, string> PlanFor(IEnumerable<ArchiveEntry> entries, string destDir, string stripPrefix)
         {

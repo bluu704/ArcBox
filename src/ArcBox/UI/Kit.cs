@@ -199,6 +199,68 @@ namespace ArcBox.UI
             return b;
         }
 
+        // ---------------- large icons (icon views)
+        [DllImport("shell32.dll", EntryPoint = "#727")] private static extern int SHGetImageList(int list, ref Guid riid, out IntPtr ppv);
+        [DllImport("comctl32.dll")] private static extern IntPtr ImageList_GetIcon(IntPtr himl, int i, int flags);
+        private const uint SHGFI_SYSICONINDEX = 0x4000;
+        private static readonly Dictionary<string, Bitmap> Large = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Type icon for name, drawn centred on a transparent size x size square.</summary>
+        public static Bitmap LargeIcon(string name, bool dir, int size)
+        {
+            string key = Key(name, dir) + "|" + size;
+            if (Large.TryGetValue(key, out var cached)) return cached;
+            Bitmap src = null;
+            try
+            {
+                var info = new SHFILEINFO();
+                string k = Key(name, dir);
+                string probe = dir ? "folder" : (k.StartsWith("<") ? "file" : "file" + k);
+                SHGetFileInfo(probe, dir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL, ref info, (uint)Marshal.SizeOf(typeof(SHFILEINFO)),
+                    SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES);
+                var iid = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"); // IImageList
+                int list = size > 48 ? 4 : 2; // SHIL_JUMBO (256) / SHIL_EXTRALARGE (48)
+                if (SHGetImageList(list, ref iid, out var himl) == 0 && himl != IntPtr.Zero)
+                {
+                    IntPtr h = ImageList_GetIcon(himl, info.iIcon, 1 /* ILD_TRANSPARENT */);
+                    if (h != IntPtr.Zero)
+                    {
+                        using (var ic = System.Drawing.Icon.FromHandle(h)) src = ic.ToBitmap();
+                        DestroyIcon(h);
+                    }
+                }
+            }
+            catch { }
+            if (src == null) src = Icon(name, dir);
+            var b = new Bitmap(size, size);
+            using (var g = Graphics.FromImage(b))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                var r = Trimmed(src);
+                // small source icons are not blown up past twice their size
+                float scale = Math.Min((float)size / Math.Max(r.Width, r.Height), r.Width <= 32 ? 2f : 100f);
+                int w = (int)(r.Width * scale), hgt = (int)(r.Height * scale);
+                g.DrawImage(src, new Rectangle((size - w) / 2, (size - hgt) / 2, w, hgt), r, GraphicsUnit.Pixel);
+            }
+            Large[key] = b;
+            return b;
+        }
+
+        /// <summary>Bounds of the non-transparent pixels (jumbo icons of small-only types sit in the top-left corner).</summary>
+        private static Rectangle Trimmed(Bitmap b)
+        {
+            int minX = b.Width, minY = b.Height, maxX = -1, maxY = -1;
+            for (int y = 0; y < b.Height; y++)
+                for (int x = 0; x < b.Width; x++)
+                    if (b.GetPixel(x, y).A > 8) { if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
+            if (maxX < 0) return new Rectangle(0, 0, b.Width, b.Height);
+            // keep it square-ish around the content so normal icons are not stretched
+            int w = maxX - minX + 1, h = maxY - minY + 1;
+            if (w > b.Width * 0.6 && h > b.Height * 0.6) return new Rectangle(0, 0, b.Width, b.Height);
+            return new Rectangle(minX, minY, w, h);
+        }
+
         public static string TypeName(string name, bool dir)
         {
             string key = Key(name, dir);
