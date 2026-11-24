@@ -17,7 +17,7 @@ namespace ArcBox.UI
         {
             using (var f = new Form())
             {
-                Kit.InitDialog(f, "암호 입력", 420, 200);
+                Kit.InitDialog(f, "암호 입력", 420, 214);
                 var col = Kit.Column();
                 Kit.AddRow(col, Kit.Lbl(retry ? "암호가 틀렸습니다. 다시 입력하세요." : "암호가 걸린 압축 파일입니다.", retry ? "accent" : null, true), 2);
                 Kit.AddRow(col, Kit.Lbl(archiveName, "sub"), 6);
@@ -25,7 +25,8 @@ namespace ArcBox.UI
                 Kit.AddRow(col, tb, 4);
                 var show = Kit.Chk("암호 표시");
                 show.CheckedChanged += (s, e) => tb.UseSystemPasswordChar = !show.Checked;
-                Kit.AddRow(col, show, 0);
+                var save = Kit.Chk("암호 관리자에 저장");
+                Kit.AddRow(col, Kit.Row(show, save), 0);
                 var ok = Kit.Btn("확인", true); var cancel = Kit.Btn("취소");
                 ok.DialogResult = DialogResult.OK; cancel.DialogResult = DialogResult.Cancel;
                 f.AcceptButton = ok; f.CancelButton = cancel;
@@ -34,7 +35,9 @@ namespace ArcBox.UI
                 Theme.Apply(f);
                 f.Shown += (s, e) => tb.Focus();
                 if (owner == null) f.StartPosition = FormStartPosition.CenterScreen;
-                return f.ShowDialog(owner) == DialogResult.OK ? tb.Text : null;
+                if (f.ShowDialog(owner) != DialogResult.OK) return null;
+                if (save.Checked) PasswordVault.Add(tb.Text, archiveName);
+                return tb.Text;
             }
         }
     }

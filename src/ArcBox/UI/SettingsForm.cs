@@ -18,6 +18,9 @@ namespace ArcBox.UI
         private RadioButton _dblOpen, _dblSmart, _dblFolder, _dblMenu;
         private CheckBox _openAfter, _utf8, _menuOn;
         private Label _userChoiceNote;
+        private List<PasswordVault.Entry> _vault;
+        private ListView _vaultList;
+        private CheckBox _vaultAuto, _vaultShow;
 
         public SettingsForm(string page = "파일 연결")
         {
@@ -30,6 +33,7 @@ namespace ArcBox.UI
             AddPage(nav, "일반", BuildGeneral());
             AddPage(nav, "파일 연결", BuildAssoc());
             AddPage(nav, "탐색기 메뉴", BuildMenu());
+            AddPage(nav, "암호 관리", BuildVault());
 
             var ok = Kit.Btn("확인", true); var cancel = Kit.Btn("취소"); var apply = Kit.Btn("적용");
             cancel.DialogResult = DialogResult.Cancel;
@@ -191,9 +195,76 @@ namespace ArcBox.UI
             return t;
         }
 
+        private Control BuildVault()
+        {
+            _vault = PasswordVault.Items;
+            var t = Page("암호 관리", "자주 쓰는 압축 파일 암호를 저장합니다. 암호 걸린 파일을 열 때 저장된 암호를 먼저 시도합니다.\n" +
+                                     "암호는 Windows 계정 보호(DPAPI)로 암호화되어 이 PC의 이 계정에서만 읽을 수 있습니다.");
+            _vaultAuto = Kit.Chk("암호가 걸린 파일을 열 때 저장된 암호를 먼저 시도", PasswordVault.AutoTry);
+            Kit.AddRow(t, _vaultAuto, 8);
+            _vaultList = new ListView
+            {
+                View = View.Details, FullRowSelect = true, HideSelection = false, Height = Theme.S(230), Font = Theme.UiFont,
+                BorderStyle = BorderStyle.FixedSingle, MultiSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            };
+            _vaultList.Columns.Add("암호", Theme.S(200));
+            _vaultList.Columns.Add("메모", Theme.S(190));
+            _vaultList.Columns.Add("마지막 사용", Theme.S(130));
+            Kit.AddRow(t, _vaultList, 6);
+            var add = Kit.Btn("추가…"); var edit = Kit.Btn("메모 수정…"); var del = Kit.Btn("삭제");
+            add.Margin = edit.Margin = del.Margin = new Padding(0, 0, Theme.S(6), 0);
+            _vaultShow = Kit.Chk("암호 표시", false);
+            _vaultShow.Margin = new Padding(Theme.S(10), Theme.S(6), 0, 0);
+            add.Click += (o, e) =>
+            {
+                string pw = InputDialog.Ask(this, "암호 추가", "저장할 암호", "");
+                if (string.IsNullOrEmpty(pw)) return;
+                if (_vault.Any(x => x.Password == pw)) { Kit.Info(this, "이미 저장된 암호입니다."); return; }
+                string memo = InputDialog.Ask(this, "암호 추가", "메모 (어디에 쓰는 암호인지, 비워 둬도 됨)", "") ?? "";
+                _vault.Add(new PasswordVault.Entry { Password = pw, Memo = memo });
+                FillVault();
+            };
+            edit.Click += (o, e) =>
+            {
+                if (_vaultList.SelectedIndices.Count != 1) return;
+                var it = _vault[_vaultList.SelectedIndices[0]];
+                string memo = InputDialog.Ask(this, "메모 수정", "메모", it.Memo);
+                if (memo == null) return;
+                it.Memo = memo;
+                FillVault();
+            };
+            del.Click += (o, e) =>
+            {
+                if (_vaultList.SelectedIndices.Count == 0) return;
+                if (!Kit.Confirm(this, "선택한 암호 " + _vaultList.SelectedIndices.Count + "개를 삭제할까요?")) return;
+                foreach (int i in _vaultList.SelectedIndices.Cast<int>().OrderByDescending(x => x)) _vault.RemoveAt(i);
+                FillVault();
+            };
+            _vaultList.DoubleClick += (o, e) => edit.PerformClick();
+            _vaultList.KeyDown += (o, e) => { if (e.KeyCode == Keys.Delete) del.PerformClick(); };
+            _vaultShow.CheckedChanged += (o, e) => FillVault();
+            Kit.AddRow(t, Kit.Row(add, edit, del, _vaultShow), 0);
+            FillVault();
+            return t;
+        }
+
+        private void FillVault()
+        {
+            _vaultList.BeginUpdate();
+            _vaultList.Items.Clear();
+            foreach (var e in _vault)
+            {
+                string pw = _vaultShow.Checked ? e.Password : new string('●', Math.Min(12, e.Password.Length));
+                _vaultList.Items.Add(new ListViewItem(new[] { pw, e.Memo, e.LastUsed == default(DateTime) ? "-" : e.LastUsed.ToString("yyyy-MM-dd HH:mm") }));
+            }
+            _vaultList.EndUpdate();
+        }
+
         private bool Apply()
         {
             var s = AppSettings.Current;
+            PasswordVault.Replace(_vault);
+            PasswordVault.AutoTry = _vaultAuto.Checked;
             string theme = _themeLight.Checked ? "light" : _themeDark.Checked ? "dark" : "system";
             bool themeChanged = theme != s.Theme;
             s.Theme = theme;

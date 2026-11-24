@@ -99,7 +99,24 @@ namespace ArcBox.UI
             _zipCrypto = Kit.Radio("ZipCrypto (호환성)");
             _showPwd.CheckedChanged += (o, e) => { _pwd.UseSystemPasswordChar = _pwd2.UseSystemPasswordChar = !_showPwd.Checked; };
             pwdIn.Controls.Add(_pwd, 0, 0); pwdIn.Controls.Add(_pwd2, 1, 0);
-            var pwdOpts = Kit.Row(_showPwd, _aes, _zipCrypto);
+            var saved = new LinkLabel { Text = "저장된 암호…", AutoSize = true, Font = Theme.UiFont, Margin = new Padding(Theme.S(6), Theme.S(5), 0, 0) };
+            saved.LinkClicked += (o, e) =>
+            {
+                var items = PasswordVault.Items;
+                var m = new ContextMenuStrip { Renderer = new Theme.FlatRenderer(), Font = Theme.UiFont };
+                if (items.Count == 0) m.Items.Add(new ToolStripMenuItem("(저장된 암호 없음 — 설정 → 암호 관리에서 추가)") { Enabled = false });
+                foreach (var it in items)
+                {
+                    var pw = it.Password;
+                    string label = (it.Memo.Length > 0 ? it.Memo + "  " : "") + new string('●', Math.Min(8, pw.Length));
+                    var mi = new ToolStripMenuItem(label);
+                    mi.Click += (o2, e2) => { _pwd.Text = _pwd2.Text = pw; PasswordVault.MarkUsed(pw); };
+                    m.Items.Add(mi);
+                }
+                m.Closed += (o2, e2) => BeginInvoke((Action)m.Dispose);
+                m.Show(saved, new Point(0, saved.Height));
+            };
+            var pwdOpts = Kit.Row(_showPwd, _aes, _zipCrypto, saved);
             pwdIn.Controls.Add(pwdOpts, 0, 1); pwdIn.SetColumnSpan(pwdOpts, 2);
             Kit.AddRow(col, pwdIn, 10);
 

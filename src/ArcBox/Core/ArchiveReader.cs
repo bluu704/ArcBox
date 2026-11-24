@@ -60,6 +60,7 @@ namespace ArcBox.Core
 
         public static ArchiveReader Open(string path, IOperationUI ui, int codePage = 0, string password = null)
         {
+            ui = VaultUI.Wrap(ui);
             var lib = SevenZipLib.Instance;
             string full = Path.GetFullPath(path);
             if (!File.Exists(full)) throw new ArchiveException("파일을 찾을 수 없습니다: " + full);
@@ -143,6 +144,7 @@ namespace ArcBox.Core
                                 r.Format = fmt;
                                 r.Password = cb.Password;
                                 r.HeadersEncrypted = cb.PasswordRequested;
+                                if (cb.PasswordRequested) PasswordVault.MarkUsed(cb.Password);
                                 r._mainWrapper = wrapper;
                                 r._openCallback = cb;
                                 if (!r.IsSplitVolume && cb.VolumeStreams.Count > 0) r.VolumeCount = 1 + cb.VolumeStreams.Count;
@@ -314,13 +316,16 @@ namespace ArcBox.Core
         /// <summary>Extracts entries. plan maps entry index -> absolute target path.</summary>
         public void Extract(IDictionary<int, string> plan, OverwriteMode mode, IOperationUI ui, OpResult res)
         {
+            ui = VaultUI.Wrap(ui);
             lock (_lock) RunExtract(plan, mode, ui, res, false);
+            if (((VaultUI)ui)?.TriedSaved == true && Password != null) PasswordVault.MarkUsed(Password);
         }
 
         public void Test(IOperationUI ui, OpResult res)
         {
             var plan = new Dictionary<int, string>();
             foreach (var e in Entries) plan[e.Index] = null;
+            ui = VaultUI.Wrap(ui);
             lock (_lock) RunExtract(plan, OverwriteMode.Overwrite, ui, res, true);
         }
 

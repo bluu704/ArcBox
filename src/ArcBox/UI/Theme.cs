@@ -419,7 +419,7 @@ namespace ArcBox.UI
     {
         public const string Open = "", NewArchive = "", Extract = "", Add = "", Delete = "",
             Test = "", Info = "", Settings = "", Up = "", Search = "", Lock = "",
-            NewFolder = "", Rename = "", Refresh = "", Back = "", View = "\uE8A9", Forward = "\uE72A", ChevronDown = "\uE70D";
+            NewFolder = "", Rename = "", Refresh = "", Back = "", View = "\uE8A9", Forward = "\uE72A", ChevronDown = "\uE70D", Repair = "\uE90F";
 
         private static string _family;
         private static readonly Dictionary<string, Bitmap> Cache = new Dictionary<string, Bitmap>();

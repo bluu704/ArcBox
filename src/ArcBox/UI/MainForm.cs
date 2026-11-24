@@ -368,6 +368,8 @@ namespace ArcBox.UI
             _miTheme.DropDownOpening += (o, e) => { foreach (ToolStripMenuItem m in _miTheme.DropDownItems) m.Checked = (string)m.Tag == AppSettings.Current.Theme; };
 
             var tools = new ToolStripMenuItem("도구(&T)");
+            Mi(tools, "손상된 ZIP 복구…", () => RepairZip(null), Keys.None, 0, Glyphs.Repair);
+            tools.DropDownItems.Add(new ToolStripSeparator());
             Mi(tools, "설정…", () => ShowSettings("일반"), Keys.None, 0, Glyphs.Settings);
             Mi(tools, "파일 연결…", () => ShowSettings("파일 연결"));
             Mi(tools, "Windows 기본 앱 설정 열기", () => { try { Kit.ShellOpen("ms-settings:defaultapps?registeredAppUser=ArcBox"); } catch { } });
@@ -552,7 +554,17 @@ namespace ArcBox.UI
             var pf = ProgressForm.Run(this, "여는 중", Path.GetFileName(path), null, false, ui => nr = ArchiveReader.Open(path, ui, codePage, password));
             if (pf.IsCancelled || nr == null)
             {
-                if (pf.Error != null) Kit.Error(this, Friendly(pf.Error));
+                bool zip = path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && !(pf.Error is OperationCanceledException);
+                if (pf.Error != null && zip && !pf.IsCancelled)
+                {
+                    if (Kit.Confirm(this, Friendly(pf.Error) + "\n\n손상된 ZIP 파일일 수 있습니다. 복구를 시도할까요?\n(원본은 그대로 두고, 살릴 수 있는 파일만 새 ZIP으로 만듭니다)"))
+                    {
+                        if (_reader == null) ShowEmpty();
+                        RepairZip(path);
+                        return;
+                    }
+                }
+                else if (pf.Error != null) Kit.Error(this, Friendly(pf.Error));
                 if (_reader == null) ShowEmpty();
                 return;
             }
@@ -566,7 +578,8 @@ namespace ArcBox.UI
             if (target == null && _root.Dirs.Count == 1 && _root.Files.Count == 0) target = _root.Dirs.Values.First();
             ShowFolder(target ?? _root, true);
             if (nr.Info.Any(kv => kv.Key == "경고"))
-                _statusRight.Text = "⚠ 압축 파일 구조에 문제가 있습니다 (정보 참고)";
+                _statusRight.Text = "⚠ 압축 파일 구조에 문제가 있습니다 (정보 참고)" +
+                    (nr.FilePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? " · 도구 → 손상된 ZIP 복구" : "");
         }
 
         private static string Friendly(Exception ex) => ex is ArchiveException ? ex.Message : "압축 파일을 열 수 없습니다.\n" + ex.Message;
@@ -1284,6 +1297,42 @@ namespace ArcBox.UI
                 DoDragDrop(data, DragDropEffects.Copy);
             }
             finally { _draggingOut = false; }
+        }
+
+        // ------------------------------------------------------------ zip repair
+        private void RepairZip(string path)
+        {
+            if (path == null)
+            {
+                using (var d = new OpenFileDialog { Title = "복구할 ZIP 파일", Filter = "ZIP 파일|*.zip|모든 파일|*.*" })
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    path = d.FileName;
+                }
+            }
+            string dir = Path.GetDirectoryName(Path.GetFullPath(path));
+            string output = PathUtil.UniqueFile(Path.Combine(dir, Path.GetFileNameWithoutExtension(path) + " (복구됨).zip"));
+            ZipRepair.Result r = null;
+            var pf = ProgressForm.Run(this, "복구하는 중", Path.GetFileName(path), output, false, ui => r = ZipRepair.Repair(path, output, ui));
+            if (r == null)
+            {
+                try { if (File.Exists(output)) File.Delete(output); } catch { }
+                if (pf.Error != null && !pf.IsCancelled) Kit.Error(this, Friendly(pf.Error));
+                return;
+            }
+            var sb = new System.Text.StringBuilder();
+            sb.Append(r.Recovered.ToString("N0")).Append("개 항목을 복구했습니다.\n").Append(Path.GetFileName(output));
+            if (r.Damaged.Count > 0)
+            {
+                sb.Append("\n\n복구하지 못한 항목 ").Append(r.Damaged.Count).Append("개:\n");
+                foreach (var n in r.Damaged.Take(8)) sb.Append("  · ").Append(n).Append('\n');
+                if (r.Damaged.Count > 8) sb.Append("  · … 외 ").Append(r.Damaged.Count - 8).Append("개\n");
+            }
+            if (r.Unverified > 0)
+                sb.Append("\n암호가 걸렸거나 특수 압축 방식인 ").Append(r.Unverified).Append("개는 내용 확인 없이 옮겼습니다. 열어서 테스트해 보세요.");
+            sb.Append("\n\n복구한 파일을 열까요?");
+            if (Kit.Confirm(this, sb.ToString())) OpenArchive(output);
+            else Kit.OpenFolder(dir, output);
         }
 
         // ------------------------------------------------------------ preview pane
