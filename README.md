@@ -3,9 +3,9 @@
 Windows용 압축 프로그램입니다. 7-Zip 엔진(7z.dll)을 사용합니다.
 
 ## 설치
-- `dist/ArcBox-Setup-1.3.0.exe`를 실행합니다. 관리자 권한 없이 사용자 폴더(`%LOCALAPPDATA%\Programs\ArcBox`)에 설치됩니다.
+- `dist/ArcBox-Setup-1.0.0.exe`를 실행합니다. 관리자 권한 없이 사용자 폴더(`%LOCALAPPDATA%\Programs\ArcBox`)에 설치됩니다.
 - 요구 사항: 64비트 Windows 10/11, .NET Framework 4.8 (Windows 10 1903 이상에는 기본 포함)
-- 포터블: `dist/ArcBox-1.3.0-portable.zip`의 압축을 풀고 `ArcBox.exe`를 실행합니다. 처음 실행할 때 파일 연결과 메뉴가 현재 사용자에게 등록됩니다.
+- 포터블: `dist/ArcBox-1.0.0-portable.zip`의 압축을 풀고 `ArcBox.exe`를 실행합니다. 처음 실행할 때 파일 연결과 메뉴가 현재 사용자에게 등록됩니다.
 
 ## 기능
 - 열기/풀기: **ALZ, EGG, ACE, ARC, ZOO, PMA, ZPAQ, HA, PEA, LZ, LZ4, BR, UUE/XXE, AES Crypt**(알집 — 암호 ZipCrypto/AES/LEA, 분할, 솔리드, AZO/LZMA/BZip2 포함), ZIP, 7Z, RAR(4/5), TAR, GZ, BZ2, XZ, ZST, CAB, ISO, ARJ, LZH, WIM, CPIO, RPM, DEB, DMG, VHD 등 (7-Zip 지원 형식 전체)

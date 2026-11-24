@@ -8,7 +8,7 @@ SetCompressor /SOLID lzma
 
 !define APP "ArcBox"
 !ifndef VERSION
-  !define VERSION "1.3.0"
+  !define VERSION "1.0.0"
 !endif
 !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP}"
 

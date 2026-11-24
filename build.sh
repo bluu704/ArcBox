@@ -2,7 +2,7 @@
 # Builds ArcBox (.NET Framework 4.8, x64) and the NSIS installer into ./dist
 set -e
 cd "$(dirname "$0")"
-VERSION=${VERSION:-1.3.0}
+VERSION=${VERSION:-1.0.0}
 python3 tools/make_icons.py assets/preview.png
 dotnet build src/ArcBox/ArcBox.csproj -c Release -f net48 -p:Version=$VERSION
 rm -rf dist && mkdir -p dist/app/icons
