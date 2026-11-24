@@ -154,7 +154,7 @@ namespace ArcBox.UI
             var r = new Rectangle(0, 0, Width - 1, Height - 1);
             using (var path = Theme.Round(r, Theme.S(5)))
             {
-                using (var b = new SolidBrush(!_editable && _hover && Enabled ? p.Hover : p.Field)) g.FillPath(b, path);
+                using (var b = new SolidBrush(!Enabled ? p.Chrome : !_editable && _hover ? p.Hover : p.Field)) g.FillPath(b, path);
                 using (var pen = new Pen(focused ? p.Accent : p.Input)) g.DrawPath(pen, path);
             }
             if (focused)
@@ -169,7 +169,8 @@ namespace ArcBox.UI
             }
             else
             {
-                if (_edit.BackColor != p.Field) _edit.BackColor = p.Field;
+                var editBg = Enabled ? p.Field : p.Chrome;
+                if (_edit.BackColor != editBg) _edit.BackColor = editBg;
                 if (_hover && Enabled)
                     using (var path = Theme.Round(new Rectangle(Width - ArrowW, Theme.S(3), ArrowW - Theme.S(3), Height - Theme.S(7)), Theme.S(4)))
                     using (var b = new SolidBrush(p.Hover)) g.FillPath(b, path);

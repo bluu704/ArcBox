@@ -30,7 +30,7 @@ namespace ArcBox.UI
 
         public void ApplyTheme()
         {
-            BackColor = Enabled ? Theme.P.Field : Theme.P.Bg;
+            BackColor = Enabled ? Theme.P.Field : Theme.P.Chrome; // disabled boxes look greyed in both themes
             ForeColor = Theme.P.Text;
             RedrawFrame();
         }
