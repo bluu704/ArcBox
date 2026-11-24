@@ -20,7 +20,7 @@ namespace ArcBox.UI
         private readonly TextBox _path;
         private readonly List<RadioButton> _formatButtons = new List<RadioButton>();
         private readonly Button _more;
-        private readonly ComboBox _level, _split;
+        private readonly FlatCombo _level, _split;
         private readonly TextBox _pwd, _pwd2;
         private readonly CheckBox _showPwd, _utf8, _separate, _encNames;
         private readonly RadioButton _aes, _zipCrypto;

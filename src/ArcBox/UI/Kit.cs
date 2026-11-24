@@ -49,10 +49,10 @@ namespace ArcBox.UI
             return new RadioButton { Text = text, Checked = on, AutoSize = true, Font = Theme.UiFont, Margin = new Padding(0, Theme.S(3), Theme.S(14), Theme.S(3)) };
         }
 
-        public static ComboBox Combo(IEnumerable<string> items, int selected = 0, bool editable = false)
+        public static FlatCombo Combo(IEnumerable<string> items, int selected = 0, bool editable = false)
         {
-            var c = new ComboBox { DropDownStyle = editable ? ComboBoxStyle.DropDown : ComboBoxStyle.DropDownList, Font = Theme.UiFont, Dock = DockStyle.Fill };
-            foreach (var i in items) c.Items.Add(i);
+            var c = new FlatCombo(editable) { Dock = DockStyle.Fill, Margin = new Padding(0) };
+            c.Items.AddRange(items);
             if (c.Items.Count > 0) c.SelectedIndex = Math.Max(0, Math.Min(selected, c.Items.Count - 1));
             return c;
         }
@@ -76,7 +76,7 @@ namespace ArcBox.UI
         public static void AddRow(TableLayoutPanel t, Control c, int spacingAfter = 6)
         {
             c.Margin = new Padding(c.Margin.Left, c.Margin.Top, c.Margin.Right, Theme.S(spacingAfter));
-            if (c is FlowLayoutPanel || c is TableLayoutPanel || c is TextBox || c is ComboBox) c.Dock = DockStyle.Fill;
+            if (c is FlowLayoutPanel || c is TableLayoutPanel || c is TextBox || c is FlatCombo) c.Dock = DockStyle.Fill;
             t.RowCount++;
             t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             t.Controls.Add(c, 0, t.RowCount - 1);

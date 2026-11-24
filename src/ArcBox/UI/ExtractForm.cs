@@ -9,9 +9,9 @@ namespace ArcBox.UI
     /// <summary>"압축 풀기" options dialog.</summary>
     public sealed class ExtractForm : Form
     {
-        private readonly ComboBox _dest;
+        private readonly FlatCombo _dest;
         private readonly CheckBox _smart, _openAfter;
-        private readonly ComboBox _overwrite;
+        private readonly FlatCombo _overwrite;
         private static readonly string[] OwKeys = { "ask", "overwrite", "skip", "rename" };
 
         public string Destination => _dest.Text.Trim();
@@ -20,7 +20,7 @@ namespace ArcBox.UI
 
         public ExtractForm(string archivePath, bool selectionOnly)
         {
-            Kit.InitDialog(this, "압축 풀기 — " + Path.GetFileName(archivePath), 520, 300);
+            Kit.InitDialog(this, "압축 풀기 — " + Path.GetFileName(archivePath), 540, 290);
             ShowInTaskbar = true;
             var s = AppSettings.Current;
             var col = Kit.Column();
@@ -40,7 +40,8 @@ namespace ArcBox.UI
                 using (var d = new FolderBrowserDialog { Description = "압축을 풀 폴더를 선택하세요", SelectedPath = Destination, ShowNewFolderButton = true })
                     if (d.ShowDialog(this) == DialogResult.OK) _dest.Text = d.SelectedPath;
             };
-            var row = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
+            browse.Margin = new Padding(Theme.S(8), 0, 0, 0);
+            var row = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0), Padding = new Padding(0) };
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             row.Controls.Add(_dest, 0, 0); row.Controls.Add(browse, 1, 0);
@@ -50,13 +51,16 @@ namespace ArcBox.UI
             _smart.Visible = !selectionOnly;
             if (!selectionOnly) Kit.AddRow(col, _smart, 4);
 
-            var owRow = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
+            var owRow = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0), Padding = new Padding(0) };
             owRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             owRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             _overwrite = Kit.Combo(new[] { "물어보기", "항상 덮어쓰기", "건너뛰기", "이름 바꿔서 저장" }, Math.Max(0, Array.IndexOf(OwKeys, s.OverwriteMode)));
-            _overwrite.Dock = DockStyle.None; _overwrite.Width = Theme.S(180);
-            owRow.Controls.Add(Kit.Lbl("같은 이름의 파일이 있으면:  "), 0, 0); owRow.Controls.Add(_overwrite, 1, 0);
-            Kit.AddRow(col, owRow, 4);
+            _overwrite.Dock = DockStyle.None; _overwrite.Width = Theme.S(190);
+            var owLabel = Kit.Lbl("같은 이름의 파일이 있으면");
+            owLabel.Anchor = AnchorStyles.Left;
+            owLabel.Margin = new Padding(0, 0, Theme.S(10), 0);
+            owRow.Controls.Add(owLabel, 0, 0); owRow.Controls.Add(_overwrite, 1, 0);
+            Kit.AddRow(col, owRow, 8);
             _openAfter = Kit.Chk("완료 후 폴더 열기", s.OpenFolderAfterExtract);
             Kit.AddRow(col, _openAfter, 0);
 

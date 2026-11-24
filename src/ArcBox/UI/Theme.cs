@@ -210,6 +210,8 @@ namespace ArcBox.UI
                 case StatusStrip ss: ss.Renderer = new FlatRenderer(); ss.BackColor = P.Chrome; ss.ForeColor = P.Sub; break;
                 case ToolStrip ts: ts.Renderer = new FlatRenderer(); ts.BackColor = P.Bg; ts.ForeColor = P.Text; break;
                 case Button b: StyleButton(b, role == "primary"); break;
+                case FlatCombo fc: fc.ApplyTheme(); break;
+                case TextBox tb when role == "bare": tb.BackColor = P.Field; tb.ForeColor = P.Text; break;
                 case TextBox tb: tb.BackColor = P.Field; tb.ForeColor = P.Text; tb.BorderStyle = BorderStyle.FixedSingle; break;
                 case ComboBox cb: cb.BackColor = P.Field; cb.ForeColor = P.Text; cb.FlatStyle = FlatStyle.Flat; break;
                 case ListView lv: lv.BackColor = P.Bg; lv.ForeColor = P.Text; if (lv.IsHandleCreated) Explorer(lv); else lv.HandleCreated += (s, e) => Explorer(lv); break;
@@ -397,7 +399,7 @@ namespace ArcBox.UI
     {
         public const string Open = "", NewArchive = "", Extract = "", Add = "", Delete = "",
             Test = "", Info = "", Settings = "", Up = "", Search = "", Lock = "",
-            NewFolder = "", Rename = "", Refresh = "", Back = "", View = "\uE8A9", Forward = "\uE72A";
+            NewFolder = "", Rename = "", Refresh = "", Back = "", View = "\uE8A9", Forward = "\uE72A", ChevronDown = "\uE70D";
 
         private static string _family;
         private static readonly Dictionary<string, Bitmap> Cache = new Dictionary<string, Bitmap>();

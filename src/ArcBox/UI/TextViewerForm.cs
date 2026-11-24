@@ -88,7 +88,7 @@ namespace ArcBox.UI
         private readonly ArchiveEntry _entry;
         private readonly TextBox _text;
         private readonly Label _info;
-        private readonly ComboBox _encoding;
+        private readonly FlatCombo _encoding;
         private readonly CheckBox _wrap;
         private readonly TextBox _find;
         private byte[] _data;
@@ -106,9 +106,9 @@ namespace ArcBox.UI
             KeyPreview = true;
             try { Icon = Kit.AppIcon; } catch { }
 
-            var top = new Panel { Dock = DockStyle.Top, Height = Theme.S(44), Tag = "chrome", Padding = new Padding(Theme.S(10), Theme.S(8), Theme.S(10), Theme.S(8)) };
+            var top = new Panel { Dock = DockStyle.Top, Height = Theme.S(48), Tag = "chrome", Padding = new Padding(Theme.S(10), Theme.S(8), Theme.S(10), Theme.S(8)) };
             var row = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent };
-            _encoding = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.UiFont, Width = Theme.S(150), Margin = new Padding(0, Theme.S(1), Theme.S(10), 0) };
+            _encoding = new FlatCombo(false) { Width = Theme.S(160), Margin = new Padding(0, 0, Theme.S(10), 0) };
             foreach (var c in TextUtil.Choices) _encoding.Items.Add(c.label);
             _encoding.SelectedIndex = 0;
             _encoding.SelectedIndexChanged += (s, e) => Render();
