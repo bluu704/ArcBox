@@ -15,6 +15,7 @@ namespace ArcBox.UI
         private readonly Dictionary<string, CheckBox> _assoc = new Dictionary<string, CheckBox>();
         private readonly Dictionary<string, CheckBox> _menuItems = new Dictionary<string, CheckBox>();
         private RadioButton _themeSystem, _themeLight, _themeDark;
+        private RadioButton _dblOpen, _dblSmart, _dblFolder, _dblMenu;
         private CheckBox _openAfter, _utf8, _menuOn;
         private Label _userChoiceNote;
 
@@ -120,7 +121,13 @@ namespace ArcBox.UI
         private Control BuildAssoc()
         {
             var s = AppSettings.Current;
-            var t = Page("파일 연결", "체크한 형식은 ArcBox 아이콘으로 표시되고, 더블클릭하면 ArcBox로 열립니다.");
+            var t = Page("파일 연결", "체크한 형식은 ArcBox 아이콘으로 표시되고, 더블클릭하면 아래에서 고른 동작을 합니다.");
+            Kit.AddRow(t, Section("압축 파일을 더블클릭하면"), 2);
+            _dblOpen = Kit.Radio("ArcBox로 열기", s.DoubleClick != "smart" && s.DoubleClick != "folder" && s.DoubleClick != "menu");
+            _dblSmart = Kit.Radio("여기에 풀기 (스마트)", s.DoubleClick == "smart");
+            _dblFolder = Kit.Radio("폴더로 풀기", s.DoubleClick == "folder");
+            _dblMenu = Kit.Radio("메뉴 보이기", s.DoubleClick == "menu");
+            Kit.AddRow(t, Kit.Row(_dblOpen, _dblSmart, _dblFolder, _dblMenu), 8);
             bool anyUnsupported = false;
             foreach (var group in Formats.All.GroupBy(f => f.Group))
             {
@@ -193,6 +200,7 @@ namespace ArcBox.UI
             s.OpenFolderAfterExtract = _openAfter.Checked;
             s.Utf8Names = _utf8.Checked;
             s.ShellMenu = _menuOn.Checked;
+            s.DoubleClick = _dblSmart.Checked ? "smart" : _dblFolder.Checked ? "folder" : _dblMenu.Checked ? "menu" : "open";
             s.Associated = new HashSet<string>(_assoc.Where(kv => kv.Value.Checked).Select(kv => kv.Key));
             s.MenuItems = new HashSet<string>(_menuItems.Where(kv => kv.Value.Checked).Select(kv => kv.Key));
             s.Save();

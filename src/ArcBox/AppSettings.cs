@@ -19,6 +19,7 @@ namespace ArcBox
         public int LastLevel = 5;
         public bool Utf8Names = true;
         public bool ShellMenu = true;
+        public string DoubleClick = "open";       // open | smart | folder | menu
         public HashSet<string> MenuItems = new HashSet<string>(Shell.ShellMenu.AllItems.Select(i => i.Id));
         public HashSet<string> Associated = new HashSet<string>(Shell.Formats.All.Where(f => f.DefaultOn).Select(f => f.Ext));
         public List<string> Recent = new List<string>();
@@ -52,6 +53,7 @@ namespace ArcBox
                             case "lastLevel": int.TryParse(v, out s.LastLevel); break;
                             case "utf8": s.Utf8Names = v == "1"; break;
                             case "shellMenu": s.ShellMenu = v == "1"; break;
+                            case "doubleClick": s.DoubleClick = v; break;
                             case "menuItems": s.MenuItems = Set(v); break;
                             case "associated": s.Associated = Set(v); break;
                             case "recent": s.Recent = List(v); break;
@@ -92,6 +94,7 @@ namespace ArcBox
                 W("lastLevel", LastLevel);
                 W("utf8", Utf8Names ? 1 : 0);
                 W("shellMenu", ShellMenu ? 1 : 0);
+                W("doubleClick", DoubleClick);
                 W("menuItems", string.Join(",", MenuItems));
                 W("associated", string.Join(",", Associated.OrderBy(x => x)));
                 W("recent", string.Join("|", Recent.Take(10)));

@@ -70,6 +70,21 @@ namespace ArcBox
             string verb = args.Length > 0 && args[0].StartsWith("/") ? args[0].ToLowerInvariant() : null;
             var files = args.Skip(verb == null ? 0 : 1).Where(a => a.Length > 0).ToList();
 
+            if (verb == "/dbl")
+            {
+                // double-click on an archive: behaviour chosen in settings
+                switch (AppSettings.Current.DoubleClick)
+                {
+                    case "smart": verb = "/x"; break;
+                    case "folder": verb = "/xf"; break;
+                    case "menu":
+                        verb = QuickMenu.Choose(files.FirstOrDefault());
+                        if (verb == "") return 0; // dismissed
+                        break;
+                    default: verb = null; break;
+                }
+            }
+
             switch (verb)
             {
                 case null:

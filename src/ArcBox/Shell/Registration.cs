@@ -81,7 +81,7 @@ namespace ArcBox.Shell
             using (var a = cu.CreateSubKey(Classes + @"\Applications\ArcBox.exe"))
             {
                 a.SetValue("FriendlyAppName", "ArcBox");
-                using (var c = a.CreateSubKey(@"shell\open\command")) c.SetValue("", "\"" + ExePath + "\" \"%1\"");
+                using (var c = a.CreateSubKey(@"shell\open\command")) c.SetValue("", Cmd("/dbl"));
                 using (var st = a.CreateSubKey("SupportedTypes")) foreach (var f in Formats.All) st.SetValue("." + f.Ext, "");
             }
 
@@ -99,7 +99,7 @@ namespace ArcBox.Shell
                         op.SetValue("", "ArcBox로 열기");
                         op.SetValue("Icon", ExePath + ",0");
                     }
-                    using (var c = pk.CreateSubKey(@"shell\open\command")) c.SetValue("", "\"" + ExePath + "\" \"%1\"");
+                    using (var c = pk.CreateSubKey(@"shell\open\command")) c.SetValue("", Cmd("/dbl"));
                 }
                 using (var ek = cu.CreateSubKey(Classes + "\\." + f.Ext))
                 {
