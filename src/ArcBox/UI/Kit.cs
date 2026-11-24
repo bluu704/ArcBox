@@ -32,7 +32,7 @@ namespace ArcBox.UI
 
         public static TextBox Txt(string text = "", bool password = false)
         {
-            return new TextBox
+            return new FlatTextBox
             {
                 Text = text, Font = Theme.UiFont, UseSystemPasswordChar = password, Dock = DockStyle.Fill,
                 Margin = new Padding(0, Theme.S(2), 0, Theme.S(2))
@@ -121,11 +121,75 @@ namespace ArcBox.UI
             }
         }
 
-        public static void Error(IWin32Window owner, string msg) =>
-            MessageBox.Show(owner, msg, "ArcBox", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        /// <summary>ToolTip drawn in the theme colours instead of the light system style.</summary>
+        public static ToolTip Tip()
+        {
+            var t = new ToolTip { OwnerDraw = true };
+            t.Popup += (s, e) =>
+            {
+                var sz = TextRenderer.MeasureText(t.GetToolTip(e.AssociatedControl), Theme.UiFont);
+                e.ToolTipSize = new Size(sz.Width + Theme.S(16), sz.Height + Theme.S(10));
+            };
+            t.Draw += (s, e) =>
+            {
+                var p = Theme.P;
+                using (var b = new SolidBrush(p.Dark ? p.Chrome : p.Bg)) e.Graphics.FillRectangle(b, e.Bounds);
+                using (var pen = new Pen(p.Input)) e.Graphics.DrawRectangle(pen, 0, 0, e.Bounds.Width - 1, e.Bounds.Height - 1);
+                TextRenderer.DrawText(e.Graphics, e.ToolTipText, Theme.UiFont, e.Bounds, p.Text,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix);
+            };
+            return t;
+        }
 
-        public static bool Confirm(IWin32Window owner, string msg) =>
-            MessageBox.Show(owner, msg, "ArcBox", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        public static void Error(IWin32Window owner, string msg) => Message(owner, msg, "ArcBox", "warn", false);
+        public static void Info(IWin32Window owner, string msg, string title = "ArcBox") => Message(owner, msg, title, "info", false);
+        public static bool Confirm(IWin32Window owner, string msg) => Message(owner, msg, "ArcBox", "ask", true);
+
+        /// <summary>Themed replacement for MessageBox (the Windows one stays light in dark mode).</summary>
+        private static bool Message(IWin32Window owner, string msg, string title, string kind, bool yesNo)
+        {
+            using (var f = new Form())
+            {
+                InitDialog(f, title, 440, 160);
+                if (owner == null) { f.StartPosition = FormStartPosition.CenterScreen; f.ShowInTaskbar = true; f.TopMost = true; }
+                var p = Theme.P;
+                string glyph = kind == "warn" ? "\uE7BA" : kind == "ask" ? "\uE9CE" : "\uE946";
+                Color color = kind == "warn" ? p.Warn : p.Dark ? p.AccentText : p.Accent;
+                var icon = new PictureBox { Size = new Size(Theme.S(32), Theme.S(32)), Image = Glyphs.Get(glyph, Theme.S(32), color, "!"), Location = new Point(Theme.S(20), Theme.S(20)), BackColor = Color.Transparent };
+                var text = new Label
+                {
+                    Text = msg, AutoSize = true, MaximumSize = new Size(Theme.S(340), 0), Font = Theme.UiFont, UseMnemonic = false,
+                    Location = new Point(Theme.S(66), Theme.S(22)),
+                };
+                var body = new Panel { Dock = DockStyle.Fill };
+                body.Controls.Add(icon);
+                body.Controls.Add(text);
+                Button ok, no = null;
+                if (yesNo)
+                {
+                    ok = Btn("예", true, 80); no = Btn("아니오", false, 80);
+                    ok.DialogResult = DialogResult.Yes; no.DialogResult = DialogResult.No;
+                    f.AcceptButton = ok; f.CancelButton = no;
+                }
+                else
+                {
+                    ok = Btn("확인", true, 80);
+                    ok.DialogResult = DialogResult.OK;
+                    f.AcceptButton = ok; f.CancelButton = ok;
+                }
+                var copy = new LinkLabel { Text = "복사", AutoSize = true, Font = Theme.UiFont };
+                copy.LinkClicked += (s, e) => { try { Clipboard.SetText(msg); } catch { } };
+                f.Controls.Add(body);
+                f.Controls.Add(yesNo ? Footer(copy, ok, no) : Footer(copy, ok));
+                Theme.Apply(f);
+                var size = text.GetPreferredSize(new Size(Theme.S(340), 0));
+                int bodyH = Math.Max(Theme.S(32), size.Height) + Theme.S(44);
+                f.ClientSize = new Size(Math.Max(Theme.S(360), Theme.S(66) + size.Width + Theme.S(30)), bodyH + Theme.S(52));
+                if (kind == "warn") System.Media.SystemSounds.Exclamation.Play();
+                var r = owner == null ? f.ShowDialog() : f.ShowDialog(owner);
+                return r == DialogResult.Yes || r == DialogResult.OK;
+            }
+        }
 
         public static void OpenFolder(string path, string select = null)
         {

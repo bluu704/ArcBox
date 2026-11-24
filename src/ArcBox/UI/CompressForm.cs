@@ -87,8 +87,8 @@ namespace ArcBox.UI
             grid.Controls.Add(_level, 0, 1); grid.Controls.Add(_split, 1, 1);
             Kit.AddRow(col, grid, 10);
 
-            var pwdBox = new GroupBox { Text = "암호", Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(Theme.S(10)), Font = Theme.UiBold };
-            var pwdIn = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Font = Theme.UiFont };
+            Kit.AddRow(col, Kit.Lbl("암호", null, true), 2);
+            var pwdIn = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Font = Theme.UiFont, Margin = new Padding(0), Padding = new Padding(0) };
             pwdIn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             pwdIn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             _pwd = Kit.Txt("", true); _pwd2 = Kit.Txt("", true);
@@ -101,8 +101,7 @@ namespace ArcBox.UI
             pwdIn.Controls.Add(_pwd, 0, 0); pwdIn.Controls.Add(_pwd2, 1, 0);
             var pwdOpts = Kit.Row(_showPwd, _aes, _zipCrypto);
             pwdIn.Controls.Add(pwdOpts, 0, 1); pwdIn.SetColumnSpan(pwdOpts, 2);
-            pwdBox.Controls.Add(pwdIn);
-            Kit.AddRow(col, pwdBox, 10);
+            Kit.AddRow(col, pwdIn, 10);
 
             Kit.AddRow(col, Kit.Lbl("옵션", null, true), 2);
             _utf8 = Kit.Chk("파일 이름을 UTF-8로 저장 (macOS·리눅스 호환)", s.Utf8Names);

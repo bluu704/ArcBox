@@ -184,6 +184,13 @@ namespace ArcBox.UI
             }
         }
 
+        /// <summary>Dark scroll bars for scrollable panels and multi-line text boxes.</summary>
+        public static void DarkScroll(Control c)
+        {
+            if (c.IsHandleCreated) Explorer(c);
+            else c.HandleCreated += (s, e) => Explorer(c);
+        }
+
         public static void Explorer(Control c)
         {
             try { SetWindowTheme(c.Handle, P.Dark ? "DarkMode_Explorer" : "Explorer", null); } catch { }
@@ -211,7 +218,12 @@ namespace ArcBox.UI
                 case ToolStrip ts: ts.Renderer = new FlatRenderer(); ts.BackColor = P.Bg; ts.ForeColor = P.Text; break;
                 case Button b: StyleButton(b, role == "primary"); break;
                 case FlatCombo fc: fc.ApplyTheme(); break;
-                case TextBox tb when role == "bare": tb.BackColor = P.Field; tb.ForeColor = P.Text; break;
+                case FlatTextBox ftb: ftb.ApplyTheme(); break;
+                case TextBox tb when role == "bare" || tb.BorderStyle == BorderStyle.None:
+                    if (role == "bare") tb.BackColor = P.Field; // inside a field box; other borderless ones are coloured by their owner
+                    tb.ForeColor = P.Text;
+                    if (tb.Multiline) DarkScroll(tb);
+                    break;
                 case TextBox tb: tb.BackColor = P.Field; tb.ForeColor = P.Text; tb.BorderStyle = BorderStyle.FixedSingle; break;
                 case ComboBox cb: cb.BackColor = P.Field; cb.ForeColor = P.Text; cb.FlatStyle = FlatStyle.Flat; break;
                 case ListView lv: lv.BackColor = P.Bg; lv.ForeColor = P.Text; if (lv.IsHandleCreated) Explorer(lv); else lv.HandleCreated += (s, e) => Explorer(lv); break;
@@ -231,6 +243,10 @@ namespace ArcBox.UI
                     l.ForeColor = role == "sub" ? P.Sub : role == "accent" ? P.AccentText : role == "muted" ? P.Muted : P.Text;
                     break;
                 case ProgressBar _: break;
+                case Panel p when p.AutoScroll:
+                    p.BackColor = role == "chrome" ? P.Chrome : role == "side" ? P.Side : P.Bg;
+                    DarkScroll(p);
+                    break;
                 case Panel p:
                     // layout panels without a role take their parent's colour, so button rows on a footer bar
                     // don't show up as a darker box

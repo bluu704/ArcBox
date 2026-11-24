@@ -120,7 +120,7 @@ namespace ArcBox.UI
 
             // address bar
             _addressBar = new Panel { Dock = DockStyle.Top, Height = Theme.S(40), Padding = new Padding(Theme.S(8), Theme.S(6), Theme.S(8), Theme.S(6)) };
-            var toolTip = new ToolTip();
+            var toolTip = Kit.Tip();
             Button NavBtn(string tip, Action a)
             {
                 var b = new Button { Dock = DockStyle.Left, Width = Theme.S(28), Text = "", FlatStyle = FlatStyle.Flat };
@@ -616,7 +616,7 @@ namespace ArcBox.UI
                 var link = new LinkLabel { Text = Path.GetFileName(r), AutoSize = true, Font = Theme.UiFont, Margin = new Padding(0, Theme.S(2), 0, Theme.S(2)), LinkBehavior = LinkBehavior.HoverUnderline };
                 var path = r;
                 link.LinkClicked += (o, e) => OpenArchive(path);
-                new ToolTip().SetToolTip(link, r);
+                Kit.Tip().SetToolTip(link, r);
                 _recentPanel.Controls.Add(link);
             }
             Theme.Apply(_recentPanel);
@@ -1679,8 +1679,7 @@ namespace ArcBox.UI
 
         private void About()
         {
-            MessageBox.Show(this, "ArcBox " + Application.ProductVersion + "\n\n가볍고 안전한 압축 프로그램\n압축 엔진: 7-Zip (Igor Pavlov, GNU LGPL + unRAR 제한)\n\n설정 · 로그: " + AppSettings.Dir,
-                "ArcBox 정보", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Kit.Info(this, "ArcBox " + Application.ProductVersion + "\n\n가볍고 안전한 압축 프로그램\n압축 엔진: 7-Zip (Igor Pavlov, GNU LGPL + unRAR 제한)\n\n설정 · 로그: " + AppSettings.Dir, "ArcBox 정보");
         }
 
         private void SaveWindow()

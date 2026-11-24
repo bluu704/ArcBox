@@ -53,7 +53,7 @@ namespace ArcBox.UI
             _rotR.Click += (s, e) => Rotate(true);
             _slide.Click += (s, e) => ToggleSlideshow();
             _full.Click += (s, e) => ToggleFullScreen();
-            var tips = new ToolTip();
+            var tips = Kit.Tip();
             tips.SetToolTip(_rotL, "왼쪽으로 회전 (Shift+R)"); tips.SetToolTip(_rotR, "오른쪽으로 회전 (R)");
             tips.SetToolTip(_slide, "슬라이드쇼 (F5)"); tips.SetToolTip(_full, "전체 화면 (F11)");
             _slideTimer.Tick += (s, e) => ShowImage(_index + 1 < _items.Count ? _index + 1 : 0);

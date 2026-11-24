@@ -106,11 +106,11 @@ namespace ArcBox
                     // ArcBox.exe /preview <archive> : image viewer on the archive's pictures
                     ArchiveReader r = null;
                     var pf = ProgressForm.Run(null, "여는 중", Path.GetFileName(files[0]), null, false, ui => r = ArchiveReader.Open(files[0], ui));
-                    if (r == null) { if (pf.Error != null) MessageBox.Show(pf.Error.Message, "ArcBox"); return 1; }
+                    if (r == null) { if (pf.Error != null) Kit.Error(null, pf.Error.Message); return 1; }
                     using (r)
                     {
                         var imgs = r.Entries.Where(e => !e.IsDir && ImageDecode.IsImage(e.Name)).OrderBy(e => e.Path).ToList();
-                        if (imgs.Count == 0) { MessageBox.Show("이미지가 없습니다.", "ArcBox"); return 0; }
+                        if (imgs.Count == 0) { Kit.Info(null, "이미지가 없습니다."); return 0; }
                         Application.Run(new ImageViewerForm(r, imgs, 0) { StartPosition = FormStartPosition.CenterScreen, ShowInTaskbar = true });
                     }
                     return 0;
@@ -161,7 +161,7 @@ namespace ArcBox
                     HashDialog.Show(null, all.Where(File.Exists).ToList());
                     break;
                 default:
-                    MessageBox.Show("알 수 없는 명령: " + verb, "ArcBox");
+                    Kit.Error(null, "알 수 없는 명령: " + verb);
                     return 2;
             }
             return 0;

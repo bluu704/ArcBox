@@ -114,7 +114,7 @@ namespace ArcBox.UI
             _encoding.SelectedIndexChanged += (s, e) => Render();
             _wrap = Kit.Chk("자동 줄 바꿈", true);
             _wrap.CheckedChanged += (s, e) => _text.WordWrap = _wrap.Checked;
-            _find = new TextBox { Width = Theme.S(180), Font = Theme.UiFont, Margin = new Padding(Theme.S(6), Theme.S(1), Theme.S(4), 0) };
+            _find = new FlatTextBox { Width = Theme.S(180), Margin = new Padding(Theme.S(6), 0, Theme.S(4), 0) };
             var findBtn = Kit.Btn("찾기", false, 56);
             findBtn.Margin = new Padding(0);
             findBtn.Click += (s, e) => FindNext();

@@ -146,7 +146,7 @@ namespace ArcBox.UI
             if (r.Cancelled && !r.HasErrors) return;
             if (!r.HasErrors && r.Warnings.Count == 0)
             {
-                if (success != null) MessageBox.Show(owner, success, "ArcBox", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (success != null) Kit.Info(owner, success);
                 return;
             }
             var rows = new List<KeyValuePair<string, string>>();
