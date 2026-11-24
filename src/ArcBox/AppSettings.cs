@@ -27,7 +27,9 @@ namespace ArcBox
         public int WindowW = 960, WindowH = 620;
         public bool WindowMax;
         public int TreeWidth = 186;
-        public string ViewMode = "details";       // details | medium | large | xlarge
+        public string ViewMode = "details";
+        public bool PreviewPane;
+        public int PreviewWidth = 300;       // details | medium | large | xlarge
 
         public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ArcBox");
         private static string FilePath => Path.Combine(Dir, "settings.ini");
@@ -64,6 +66,8 @@ namespace ArcBox
                             case "windowMax": s.WindowMax = v == "1"; break;
                             case "treeWidth": int.TryParse(v, out s.TreeWidth); break;
                             case "viewMode": s.ViewMode = v; break;
+                            case "previewPane": s.PreviewPane = v == "1"; break;
+                            case "previewWidth": int.TryParse(v, out s.PreviewWidth); break;
                         }
                     }
                 }
@@ -104,6 +108,8 @@ namespace ArcBox
                 W("windowW", WindowW); W("windowH", WindowH); W("windowMax", WindowMax ? 1 : 0);
                 W("treeWidth", TreeWidth);
                 W("viewMode", ViewMode);
+                W("previewPane", PreviewPane ? 1 : 0);
+                W("previewWidth", PreviewWidth);
                 string tmp = FilePath + ".tmp";
                 File.WriteAllText(tmp, sb.ToString(), Encoding.UTF8);
                 if (File.Exists(FilePath)) File.Delete(FilePath);

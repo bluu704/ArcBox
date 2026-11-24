@@ -57,7 +57,12 @@ namespace ArcBox.UI
         private readonly MenuStrip _menu;
         private readonly ToolStrip _tools;
         private readonly Panel _addressBar;
-        private readonly Button _upBtn;
+        private readonly Button _upBtn, _backBtn, _fwdBtn;
+        private readonly Stack<string> _back = new Stack<string>(), _fwd = new Stack<string>();
+        private readonly SplitContainer _split2;
+        private readonly PreviewPane _preview;
+        private readonly Timer _previewTimer = new Timer { Interval = 160 };
+        private ToolStripMenuItem _miPreview, _miPreview2;
         private readonly Label _address;
         private readonly TextBox _search;
         private readonly SplitContainer _split;
@@ -115,10 +120,17 @@ namespace ArcBox.UI
 
             // address bar
             _addressBar = new Panel { Dock = DockStyle.Top, Height = Theme.S(40), Padding = new Padding(Theme.S(8), Theme.S(6), Theme.S(8), Theme.S(6)) };
-            _upBtn = new Button { Dock = DockStyle.Left, Width = Theme.S(28), Text = "", FlatStyle = FlatStyle.Flat };
-            _upBtn.Click += (o, e) => GoUp();
             var toolTip = new ToolTip();
-            toolTip.SetToolTip(_upBtn, "상위 폴더 (Backspace)");
+            Button NavBtn(string tip, Action a)
+            {
+                var b = new Button { Dock = DockStyle.Left, Width = Theme.S(28), Text = "", FlatStyle = FlatStyle.Flat };
+                b.Click += (o, e) => a();
+                toolTip.SetToolTip(b, tip);
+                return b;
+            }
+            _backBtn = NavBtn("뒤로 (Alt+←)", GoBack);
+            _fwdBtn = NavBtn("앞으로 (Alt+→)", GoForward);
+            _upBtn = NavBtn("상위 폴더 (Backspace)", GoUp);
             var addrHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Theme.S(6), 0, Theme.S(6), 0) };
             _address = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Font = Theme.UiFont, Padding = new Padding(Theme.S(8), 0, 0, 0) };
             var addrBox = new BorderPanel { Dock = DockStyle.Fill };
@@ -133,6 +145,10 @@ namespace ArcBox.UI
             _addressBar.Controls.Add(addrHost);
             _addressBar.Controls.Add(searchBox);
             _addressBar.Controls.Add(_upBtn);
+            _addressBar.Controls.Add(new Panel { Dock = DockStyle.Left, Width = Theme.S(4) });
+            _addressBar.Controls.Add(_fwdBtn);
+            _addressBar.Controls.Add(new Panel { Dock = DockStyle.Left, Width = Theme.S(4) });
+            _addressBar.Controls.Add(_backBtn);
             var addrLine = new Panel { Dock = DockStyle.Top, Height = 1, Tag = "line" };
             var toolLine = new Panel { Dock = DockStyle.Top, Height = 1, Tag = "line" };
 
@@ -198,7 +214,15 @@ namespace ArcBox.UI
             _list.Resize += (o, e) => FitColumns();
             _list.MouseUp += (o, e) => { if (e.Button == MouseButtons.Right) ShowListMenu(e.Location); };
             _list.HandleCreated += (o, e) => ApplyIconSpacing();
-            _split.Panel2.Controls.Add(_list);
+            _split2 = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, SplitterWidth = Theme.S(4) };
+            _preview = new PreviewPane { Dock = DockStyle.Fill };
+            _split2.Panel1.Controls.Add(_list);
+            _split2.Panel2.Controls.Add(_preview);
+            _split2.Panel2Collapsed = !s.PreviewPane;
+            _split.Panel2.Controls.Add(_split2);
+            _list.SelectedIndexChanged += (o, e) => SchedulePreview();
+            _list.VirtualItemsSelectionRangeChanged += (o, e) => SchedulePreview();
+            _previewTimer.Tick += (o, e) => { _previewTimer.Stop(); UpdatePreview(); };
 
             // status
             _status = new StatusStrip { SizingGrip = false, Font = Theme.UiFont };
@@ -248,6 +272,7 @@ namespace ArcBox.UI
             {
                 _split.Panel1MinSize = Theme.S(120);
                 _split.SplitterDistance = Theme.S(Math.Max(120, s.TreeWidth));
+                try { _split2.Panel2MinSize = Theme.S(160); _split2.SplitterDistance = Math.Max(Theme.S(200), _split2.Width - Theme.S(Math.Max(160, s.PreviewWidth))); } catch { }
                 ApplyTheme();
                 SetViewMode(s.ViewMode);
                 ShowEmpty();
@@ -307,6 +332,9 @@ namespace ArcBox.UI
 
             var view = new ToolStripMenuItem("보기(&V)");
             foreach (var mi in ViewMenuItems()) view.DropDownItems.Add(mi);
+            view.DropDownItems.Add(new ToolStripSeparator());
+            _miPreview = new ToolStripMenuItem("미리보기 창", null, (o, e) => TogglePreview()) { ShortcutKeys = Keys.Alt | Keys.P };
+            view.DropDownItems.Add(_miPreview);
             view.DropDownItems.Add(new ToolStripSeparator());
             view.DropDownOpening += (o, e) => SyncViewChecks();
             Mi(view, "새로 고침", () => Reopen(), Keys.F5, 1);
@@ -370,6 +398,9 @@ namespace ArcBox.UI
             };
             _tbView.DropDown.Renderer = new Theme.FlatRenderer();
             foreach (var mi in ViewMenuItems(false)) _tbView.DropDownItems.Add(mi);
+            _tbView.DropDownItems.Add(new ToolStripSeparator());
+            _miPreview2 = new ToolStripMenuItem("미리보기 창", null, (o, e) => TogglePreview()) { ShortcutKeyDisplayString = "Alt+P" };
+            _tbView.DropDownItems.Add(_miPreview2);
             _tbView.DropDownOpening += (o, e) => SyncViewChecks();
             _tools.Items.Add(_tbView);
             _needArchive.Add(_tbView);
@@ -390,9 +421,17 @@ namespace ArcBox.UI
                 }
             }
             _upBtn.Image = Glyphs.Get(Glyphs.Up, Theme.S(14), p.Text, "↑");
-            _upBtn.FlatAppearance.BorderColor = p.Border;
-            _upBtn.BackColor = p.Btn;
-            _upBtn.FlatAppearance.MouseOverBackColor = p.Hover;
+            _backBtn.Image = Glyphs.Get(Glyphs.Back, Theme.S(14), p.Text, "←");
+            _fwdBtn.Image = Glyphs.Get(Glyphs.Forward, Theme.S(14), p.Text, "→");
+            foreach (var nb in new[] { _upBtn, _backBtn, _fwdBtn })
+            {
+                nb.FlatAppearance.BorderColor = p.Border;
+                nb.BackColor = p.Btn;
+                nb.FlatAppearance.MouseOverBackColor = p.Hover;
+            }
+            _preview.ApplyTheme();
+            _split2.BackColor = p.Border;
+            _split2.Panel1.BackColor = _split2.Panel2.BackColor = p.Bg;
             _search.BackColor = p.Field; _search.ForeColor = p.Text;
             _split.BackColor = p.Border;
             _split.Panel1.BackColor = p.Side;
@@ -532,6 +571,8 @@ namespace ArcBox.UI
             _rows = new List<Row>();
             _list.VirtualListSize = 0;
             ResetThumbs();
+            _back.Clear(); _fwd.Clear();
+            _preview.Clear();
             _tree.Nodes.Clear();
             Text = "ArcBox";
         }
@@ -668,9 +709,16 @@ namespace ArcBox.UI
             return n;
         }
 
-        private void ShowFolder(Node n, bool syncTree)
+        private void ShowFolder(Node n, bool syncTree, bool record = true)
         {
+            if (record && _current != null && _current != n)
+            {
+                _back.Push(_current.Path);
+                _fwd.Clear();
+            }
             _current = n;
+            _backBtn.Enabled = _back.Count > 0;
+            _fwdBtn.Enabled = _fwd.Count > 0;
             lock (_thumbStack) { _thumbStack.Clear(); _thumbQueued.Clear(); }
             if (_search.Text.Length > 0) _search.Text = "";
             if (syncTree && n.TreeNode != null)
@@ -686,6 +734,35 @@ namespace ArcBox.UI
             RefreshList();
             _list.SelectedIndices.Clear();
             if (_rows.Count > 0) _list.EnsureVisible(0);
+            SchedulePreview();
+        }
+
+        private void GoBack() => Travel(_back, _fwd);
+        private void GoForward() => Travel(_fwd, _back);
+
+        private void Travel(Stack<string> from, Stack<string> to)
+        {
+            if (_reader == null || _current == null) return;
+            while (from.Count > 0)
+            {
+                var n = FindNode(from.Pop());
+                if (n == null) continue; // folder no longer exists (after a delete)
+                to.Push(_current.Path);
+                ShowFolder(n, true, false);
+                return;
+            }
+        }
+
+        private const int WM_APPCOMMAND = 0x319;
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_APPCOMMAND)
+            {
+                int cmd = (int)(((long)m.LParam >> 16) & 0x0FFF);
+                if (cmd == 1) { GoBack(); m.Result = (IntPtr)1; return; }    // APPCOMMAND_BROWSER_BACKWARD (mouse back button)
+                if (cmd == 2) { GoForward(); m.Result = (IntPtr)1; return; } // APPCOMMAND_BROWSER_FORWARD
+            }
+            base.WndProc(ref m);
         }
 
         private void GoUp()
@@ -802,7 +879,10 @@ namespace ArcBox.UI
         {
             if (_search.Focused) { if (e.KeyCode == Keys.Escape) { _search.Text = ""; _list.Focus(); e.Handled = true; } return; }
             if (_reader == null) return;
-            if (e.KeyCode == Keys.Back) { GoUp(); e.Handled = true; }
+            if (e.Alt && e.KeyCode == Keys.Left) { GoBack(); e.Handled = e.SuppressKeyPress = true; }
+            else if (e.Alt && e.KeyCode == Keys.Right) { GoForward(); e.Handled = e.SuppressKeyPress = true; }
+            else if (e.Alt && e.KeyCode == Keys.Up) { GoUp(); e.Handled = e.SuppressKeyPress = true; }
+            else if (e.KeyCode == Keys.Back) { GoUp(); e.Handled = true; }
             else if (e.KeyCode == Keys.Enter && _list.Focused) { OpenSelected(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.F) { _search.Focus(); e.Handled = true; }
             else if (e.KeyCode == Keys.Space && _list.Focused) { PreviewSelected(); e.Handled = true; }
@@ -817,7 +897,7 @@ namespace ArcBox.UI
             bool canMod = _reader.CanModify;
             if (sel.Count > 0)
             {
-                bool img = sel.Count == 1 && !sel[0].IsDir && ImageDecode.IsImage(sel[0].Name);
+                bool img = sel.Count == 1 && !sel[0].IsDir && (ImageDecode.IsImage(sel[0].Name) || TextUtil.IsText(sel[0].Name));
                 Add(img ? "미리보기" : "열기", OpenSelected, sel.Count == 1);
                 if (sel.Count == 1 && !sel[0].IsDir) Add("다른 프로그램으로 열기", OpenExternally);
                 Add("선택 항목 풀기…", ExtractDialog);
@@ -854,6 +934,7 @@ namespace ArcBox.UI
             var r = sel[0];
             if (r.IsDir) { ShowFolder(r.Node, true); return; }
             if (ImageDecode.IsImage(r.Name)) { PreviewImage(r); return; }
+            if (TextUtil.IsText(r.Name)) { using (var tv = new TextViewerForm(_reader, r.Entry)) tv.ShowDialog(this); return; }
             if (Shell.Formats.IsArchiveExtension(r.Name) && Kit.Confirm(this, "압축 파일 안의 압축 파일입니다. 풀어서 ArcBox로 열까요?\n(아니오: Windows 기본 프로그램으로 열기)"))
             {
                 var p = ExtractToTemp(sel);
@@ -882,8 +963,10 @@ namespace ArcBox.UI
         private void PreviewSelected()
         {
             var sel = SelectedRows();
-            var r = sel.FirstOrDefault(x => !x.IsDir && ImageDecode.IsImage(x.Name));
-            if (r != null) PreviewImage(r);
+            var r = sel.FirstOrDefault(x => !x.IsDir && (ImageDecode.IsImage(x.Name) || TextUtil.IsText(x.Name)));
+            if (r == null) return;
+            if (ImageDecode.IsImage(r.Name)) PreviewImage(r);
+            else using (var tv = new TextViewerForm(_reader, r.Entry)) tv.ShowDialog(this);
         }
 
         /// <summary>Old behaviour: extract to a temp folder and open with the default Windows program.</summary>
@@ -1185,6 +1268,190 @@ namespace ArcBox.UI
             finally { _draggingOut = false; }
         }
 
+        // ------------------------------------------------------------ preview pane
+        private int _previewToken;
+
+        private void TogglePreview()
+        {
+            bool show = _split2.Panel2Collapsed;
+            _split2.Panel2Collapsed = !show;
+            AppSettings.Current.PreviewPane = show;
+            AppSettings.Current.Save();
+            if (show) UpdatePreview();
+        }
+
+        private void SchedulePreview()
+        {
+            if (_split2.Panel2Collapsed) return;
+            _previewTimer.Stop();
+            _previewTimer.Start();
+        }
+
+        private async void UpdatePreview()
+        {
+            if (_split2.Panel2Collapsed || _reader == null || _current == null) return;
+            int token = ++_previewToken;
+            int big = Theme.S(96);
+            var sel = SelectedRows();
+            if (sel.Count == 0)
+            {
+                var n = _current;
+                _preview.ShowIcon(n == _root ? Glyphs.Get(Glyphs.NewArchive, big, Theme.P.Accent, "A") : ShellIcons.LargeIcon("x", true, big));
+                _preview.SetInfo(n == _root ? _reader.DisplayName : n.Name, new[]
+                {
+                    "파일 " + n.Files.Count.ToString("N0") + "개, 폴더 " + n.Dirs.Count.ToString("N0") + "개",
+                    "크기  " + PathUtil.FormatSize(n.TotalSize),
+                });
+                return;
+            }
+            if (sel.Count > 1)
+            {
+                ulong total = 0;
+                foreach (var x in sel) total += x.IsDir ? x.Node.TotalSize : x.Size;
+                _preview.ShowIcon(ShellIcons.LargeIcon("x", false, big));
+                _preview.SetInfo(sel.Count.ToString("N0") + "개 항목 선택됨", new[] { "크기  " + PathUtil.FormatSize(total) });
+                return;
+            }
+            var r = sel[0];
+            _preview.ShowIcon(ShellIcons.LargeIcon(r.Name, r.IsDir, big));
+            var lines = new List<string> { ShellIcons.TypeName(r.Name, r.IsDir) };
+            if (r.IsDir)
+            {
+                lines.Add("파일 " + r.Node.Files.Count.ToString("N0") + "개, 폴더 " + r.Node.Dirs.Count.ToString("N0") + "개");
+                lines.Add("크기  " + PathUtil.FormatSize(r.Node.TotalSize));
+                if (r.MTime.HasValue) lines.Add("수정한 날짜  " + r.MTime.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+                _preview.SetInfo(r.Name, lines);
+                return;
+            }
+            var e = r.Entry;
+            lines.Add("크기  " + PathUtil.FormatSize(e.Size) + (e.PackedSize.HasValue ? "  (압축 " + PathUtil.FormatSize(e.PackedSize.Value) + ")" : ""));
+            if (e.MTime.HasValue) lines.Add("수정한 날짜  " + e.MTime.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+            if (e.Crc.HasValue) lines.Add("CRC32  " + e.Crc.Value.ToString("X8"));
+            if (!string.IsNullOrEmpty(e.Method)) lines.Add("압축 방식  " + e.Method);
+            if (e.Encrypted) lines.Add("암호  있음");
+            _preview.SetInfo(r.Name, lines);
+
+            bool isImg = ImageDecode.IsImage(r.Name) && e.Size <= 50UL * 1024 * 1024;
+            bool isText = TextUtil.IsText(r.Name) && e.Size <= 8UL * 1024 * 1024;
+            if (!isImg && !isText) return;
+            if (e.Encrypted && _reader.Password == null) { lines.Add("암호가 걸려 있어 미리볼 수 없습니다. 열기(Enter)로 보세요."); _preview.SetInfo(r.Name, lines); return; }
+            var reader = _reader;
+            try
+            {
+                var data = await Task.Run(() => reader.ReadEntryBytes(e, new SilentUI()));
+                if (token != _previewToken || data == null) return;
+                if (isImg)
+                {
+                    var img = await Task.Run(() => ImageDecode.Decode(data, r.Name));
+                    if (token != _previewToken) { img.Dispose(); return; }
+                    lines.Insert(1, img.Width + " × " + img.Height);
+                    _preview.ShowImage(img);
+                    _preview.SetInfo(r.Name, lines);
+                }
+                else
+                {
+                    string text = await Task.Run(() =>
+                    {
+                        string t = TextUtil.Decode(data, 0, out _);
+                        return TextUtil.Lines(t.Length > 200000 ? t.Substring(0, 200000) + "\n…" : t);
+                    });
+                    if (token != _previewToken) return;
+                    _preview.ShowText(text);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (token != _previewToken) return;
+                lines.Add("미리볼 수 없습니다: " + ex.Message);
+                _preview.SetInfo(r.Name, lines);
+            }
+        }
+
+        /// <summary>Right-hand pane: picture / text / file details of the selection.</summary>
+        private sealed class PreviewPane : Panel
+        {
+            private readonly PictureBox _pic;
+            private readonly TextBox _text;
+            private readonly Label _title, _details;
+            private readonly Panel _info;
+            private bool _ownsImage;
+
+            public PreviewPane()
+            {
+                Padding = new Padding(Theme.S(12), Theme.S(12), Theme.S(12), Theme.S(8));
+                _pic = new PictureBox { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Transparent };
+                _text = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = true, BorderStyle = BorderStyle.None, Visible = false, Font = TextUtil.Mono };
+                _info = new Panel { Dock = DockStyle.Bottom, Height = Theme.S(60), Padding = new Padding(0, Theme.S(10), 0, 0) };
+                _title = new Label { Dock = DockStyle.Top, Height = Theme.S(24), AutoEllipsis = true, Font = Theme.UiBold, UseMnemonic = false };
+                _details = new Label { Dock = DockStyle.Fill, Font = Theme.UiFont, UseMnemonic = false };
+                _info.Controls.Add(_details);
+                _info.Controls.Add(_title);
+                Controls.Add(_pic);
+                Controls.Add(_text);
+                Controls.Add(_info);
+            }
+
+            public void ApplyTheme()
+            {
+                var p = Theme.P;
+                BackColor = _info.BackColor = p.Bg;
+                _text.BackColor = p.Bg; _text.ForeColor = p.Text;
+                _title.ForeColor = p.Text; _details.ForeColor = p.Sub;
+            }
+
+            private void SetImage(Image img, bool owned)
+            {
+                var old = _pic.Image;
+                bool oldOwned = _ownsImage;
+                _pic.Image = img;
+                _ownsImage = owned;
+                if (oldOwned && old != null && old != img) old.Dispose();
+            }
+
+            public void ShowIcon(Image icon)
+            {
+                SetImage(icon, false);
+                _pic.SizeMode = PictureBoxSizeMode.CenterImage;
+                _pic.Visible = true; _text.Visible = false;
+            }
+
+            public void ShowImage(Image img)
+            {
+                SetImage(img, true);
+                _pic.SizeMode = img.Width <= _pic.Width && img.Height <= _pic.Height ? PictureBoxSizeMode.CenterImage : PictureBoxSizeMode.Zoom;
+                _pic.Visible = true; _text.Visible = false;
+            }
+
+            public void ShowText(string text)
+            {
+                SetImage(null, false);
+                _text.Text = text;
+                _text.Select(0, 0);
+                _text.Visible = true; _pic.Visible = false;
+            }
+
+            public void SetInfo(string title, IEnumerable<string> lines)
+            {
+                _title.Text = title;
+                var list = lines.ToList();
+                _details.Text = string.Join("\n", list);
+                _info.Height = Theme.S(10) + Theme.S(24) + list.Count * (Theme.UiFont.Height + Theme.S(3)) + Theme.S(4);
+            }
+
+            public void Clear()
+            {
+                SetImage(null, false);
+                _text.Text = "";
+                _title.Text = _details.Text = "";
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing) SetImage(null, false);
+                base.Dispose(disposing);
+            }
+        }
+
         // ------------------------------------------------------------ view modes / thumbnails
         private IEnumerable<ToolStripMenuItem> ViewMenuItems(bool shortcuts = true)
         {
@@ -1210,6 +1477,8 @@ namespace ArcBox.UI
         private void SyncViewChecks()
         {
             foreach (var mi in _viewItems) mi.Checked = (string)mi.Tag == _viewMode;
+            if (_miPreview != null) _miPreview.Checked = !_split2.Panel2Collapsed;
+            if (_miPreview2 != null) _miPreview2.Checked = !_split2.Panel2Collapsed;
         }
 
         private int ThumbSize => Theme.S(_viewMode == "xlarge" ? 192 : _viewMode == "large" ? 96 : 48);
@@ -1406,6 +1675,7 @@ namespace ArcBox.UI
                 s.WindowH = (int)(ClientSize.Height / Theme.Scale);
             }
             if (_split.Visible) s.TreeWidth = (int)(_split.SplitterDistance / Theme.Scale);
+            if (_split.Visible && !_split2.Panel2Collapsed) s.PreviewWidth = (int)(_split2.Panel2.Width / Theme.Scale);
             s.Save();
         }
 
